@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<launch>
+  <include file="$(find camera_driver)/launch/realsense_driver.launch"/>
+
+  <include file="$(find ur_robot_driver)/launch/ur5_bringup.launch">
+    <arg name="robot_ip" value="10.0.0.2"/>
+  </include>
+
+  <node name="Robotiq2FGripperRtuNode" pkg="robotiq_2f_gripper_control" type="Robotiq2FGripperRtuNode.py" args="/dev/ttyUSB0" output="screen"/>
+
+  <include file="$(find ur5_moveit_config)/launch/ur5_moveit_planning_execution.launch"/>
+
+  <!-- <include file="$(find push_grasp)/launch/pcl2_assembler.launch"/> -->
+
+  <node name="PCL_processing" pkg="push_grasp" type="pcl_preprocess_node.py" output="screen"/>
+
+  <include file="$(find agile_grasp2)/launch/robot_detect_grasps.launch"/>
+
+  <!-- <node name="generate_pcl_service" pkg="push_grasp" type="pcl_stitcher_service.py" output="screen"/> -->
+
+  <node name="rq_sensor" pkg="robotiq_ft_sensor" type="rq_sensor" output="screen"/>
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find push_grasp)/cfg/grasp_scene.rviz" required="true"/>
+
+</launch>
