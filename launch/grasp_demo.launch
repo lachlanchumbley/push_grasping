@@ -12,7 +12,7 @@
 
   <!-- <include file="$(find push_grasp)/launch/pcl2_assembler.launch"/> -->
 
-  <node name="PCL_processing" pkg="push_grasp" type="pcl_preprocess_node.py" output="screen"/>
+  <!-- <node name="PCL_processing" pkg="push_grasp" type="pcl_preprocess_node.py" output="screen"/> -->
 
   <include file="$(find agile_grasp2)/launch/robot_detect_grasps.launch"/>
 

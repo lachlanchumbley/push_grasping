@@ -19,9 +19,6 @@ from tf import TransformListener
 
 from geometry_msgs.msg import PoseStamped
 
-
-
-
 class PCL_Processing:
     def __init__(self):
         rospy.init_node("PCL_processing", anonymous=True)
@@ -40,8 +37,6 @@ class PCL_Processing:
         self.PCL_reader = rospy.Subscriber("/realsense/cloud", PointCloud2, self.cloud_callback)
 
 
-
-
     def cloud_callback(self, pcl):
         self.pcl_rosmsg = pcl
 
@@ -53,20 +48,19 @@ class PCL_Processing:
     def check_box_bounds(self, x):
         x = self.transformed_vector(x)
         
-        # if -0.78 < x[0] < -0.41 :
-        #     if -0.12 < x[1] < 0.158:
+        if -0.805 < x[0] < -0.420 :
+            if -0.090 < x[1] < 0.225:
+                return True
+        
+        return False
 
-        # RHS box
-        if -0.610 < x[0] < -0.335 :
-            if 0.140 < x[1] < 0.505:
+        # # RHS box
+        # if -0.610 < x[0] < -0.335 :
+        #     if 0.140 < x[1] < 0.505:
 
         # # LHS box
         # if -0.580 < x[0] < -0.305 :
         #     if -0.520 < x[1] < -0.160:
-
-                return True
-        
-        return False
 
     def main(self):
         rate = rospy.Rate(1)

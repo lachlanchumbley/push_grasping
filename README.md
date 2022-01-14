@@ -27,21 +27,19 @@ METHOD 2 (Manually boot each node):
 
 	5. Run `rosrun robotiq_2f_gripper_control Robotiq2FGripperRtuNode.py /dev/ttyUSB0` to initialize gripper communication
 
-
-
 	6. Press 'Play' on the UR5 pendant
 
 	7. Run `roslaunch ur5_moveit_config ur5_moveit_planning_execution.launch` to launch planning (needed for robot visualization in rviz)
 
 	8. Run `rviz -d ~/new_ws/src/push_grasp/cfg/grasp_scene.rviz`
 
-	rosrun push_grasp pcl_preprocess_node.py
+	9. Run `rosrun push_grasp pcl_preprocess_node.py'
 
 	<!-- 9. Run `roslaunch grasp_executor pcl2_assembler.launch` to initialize point cloud stitcher helper -->
 
 	10. Run `roslaunch agile_grasp2 robot_detect_grasps.launch` to launch agile grasp
 
-	rosrun robotiq_ft_sensor rq_sensor
+	11. Run `rosrun robotiq_ft_sensor rq_sensor'
 
 	<!-- 11. Run `rosrun push_grasp pcl_stitcher_service.py` to initialize point cloud detector -->
 
