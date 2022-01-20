@@ -406,47 +406,29 @@ class GraspExecutor:
     def push_grasp(self, start_pose, final_pose, force_threshold, plan=None):
         # self.move_group.set_pose_target(final_pose)
         if not plan:
-
-            # std::vector<geometry_msgs::Pose> waypoints;
+            # Grasp pose list
+            push_grasp_poses = [start_pose, final_pose]
             # Create pose array and add valid grasps
             waypoints = PoseArray()
-            waypoints.poses = poses
+            waypoints.poses = push_grasp_poses
             waypoints.header.frame_id = "base_link"
 
-            # geometry_msgs::Pose target_pose3 = start_pose2;
-            # Add pose to pose list
-            waypoints.append(start_pos)
-            # target_pose3.position.x += 0.2;
-            # target_pose3.position.z += 0.2;
-
-            # x_diff = final_pose.position.x - start_pos.position.x
-            # y_diff = final_pose.position.y - start_pos.position.y
-            # start_pose.position.
-
-            # waypoints.push_back(target_pose3);  // up and out
-            waypoints.append(start_pos)
-
             # moveit_msgs::RobotTrajectory trajectory;
-            trajectory = moveit_msgs.msg.RobotTrajectory()
-            fraction = movegroup.computeCartesianPath(waypoints,
-            #                                             0.01,  // eef_step
-            #                                             0.0,   // jump_threshold
-            #                                             trajectory);
-
-            # ROS_INFO("Visualizing plan 4 (cartesian path) (%.2f%% acheived)",
-            #     fraction * 100.0);
-            # /* Sleep to give Rviz time to visualize the plan. */
-            # sleep(15.0);
+            push_trajectory = moveit_msgs.msg.RobotTrajectory()
+            fraction = self.move_group.computeCartesianPath(waypoints, 0.01, 0.0, push_trajectory)
+            rospy.loginfo("Visualizing plan 4 (cartesian path) (%f acheived)", fraction * 100.0)
+            # Sleep to give Rviz time to visualize the plan.
+            sleep(15.0)
 
             plan = self.move_group.plan()
 
         run_flag = "d"
 
         while run_flag == "d":
-            display_trajectory = moveit_msgs.msg.DisplayTrajectory()
-            display_trajectory.trajectory_start = self.robot.get_current_state()
-            display_trajectory.trajectory.append(plan)
-            self.display_trajectory_publisher.publish(display_trajectory)
+            # display_trajectory = moveit_msgs.msg.DisplayTrajectory()
+            # display_trajectory.trajectory_start = self.robot.get_current_state()
+            # display_trajectory.trajectory.append(plan)
+            self.display_trajectory_publisher.publish(push_trajectory)
 
             run_flag = raw_input("Valid Trajectory [y to run]? or display path again [d to display]:")
 
@@ -458,7 +440,7 @@ class GraspExecutor:
                 current_pose = self.move_group.get_current_pose()
                 current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
                 final_pose_coords = [final_pose.position.x, final_pose.position.y]
-                distance_to_corner = dist_two_points(current_pose_coords, final_pose_coords)
+                distance_to_corner = self.dist_two_points(current_pose_coords, final_pose_coords)
                 if distance_to_corner < 0.05:
                     break
 
