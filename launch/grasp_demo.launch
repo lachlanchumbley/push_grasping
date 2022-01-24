@@ -1,6 +1,8 @@
 <?xml version="1.0"?>
 <launch>
-  <include file="$(find camera_driver)/launch/realsense_driver.launch"/>
+  <include file="$(find camera_driver)/launch/realsense_driver.launch">
+    <arg name="calibration" value="black"/>
+  </include>
 
   <include file="$(find ur_robot_driver)/launch/ur5_bringup.launch">
     <arg name="robot_ip" value="10.0.0.2"/>
@@ -21,5 +23,7 @@
   <node name="rq_sensor" pkg="robotiq_ft_sensor" type="rq_sensor" output="screen"/>
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find push_grasp)/cfg/grasp_scene.rviz" required="true"/>
+
+  <node name="obj_detect" pkg="obj_recognition" type="obj_recognition_segmentation" required="true"/>
 
 </launch>

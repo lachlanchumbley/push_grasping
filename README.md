@@ -41,8 +41,9 @@ METHOD 2 (Manually boot each node):
 
 	5. Run `rosrun robotiq_2f_gripper_control Robotiq2FGripperRtuNode.py /dev/ttyUSB0` to initialize gripper communication
 
-	<!-- 11. Run `rosrun push_grasp pcl_stitcher_service.py` to initialize point cloud detector -->
+	rosrun obj_recognition obj_recognition_segmentation 
 
+	<!-- 11. Run `rosrun push_grasp pcl_stitcher_service.py` to initialize point cloud detector -->
 
 When ready to run grasp code:
 

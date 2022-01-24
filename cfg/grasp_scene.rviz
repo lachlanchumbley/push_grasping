@@ -9,6 +9,7 @@ Panels:
         - /MotionPlanning1/Scene Geometry1
         - /MotionPlanning1/Planning Request1
         - /TF1/Frames1
+        - /PointCloud22
       Splitter Ratio: 0.5
     Tree Height: 241
   - Class: rviz/Selection
@@ -106,47 +107,27 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          box_2_lhs_back_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_lhs_front_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_lhs_left_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_lhs_right_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_rhs_back_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_rhs_front_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_rhs_left_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_rhs_right_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
           camera:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          corner_0_base:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          corner_1_base:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          corner_2_base:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          corner_3_base:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -292,47 +273,27 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          box_2_lhs_back_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_lhs_front_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_lhs_left_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_lhs_right_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_rhs_back_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_rhs_front_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_rhs_left_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          box_2_rhs_right_base:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
           camera:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          corner_0_base:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          corner_1_base:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          corner_2_base:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          corner_3_base:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -501,7 +462,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.009999999776482582
       Style: Flat Squares
-      Topic: /processed_PCL2_stitched
+      Topic: /realsense/cloud
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -534,7 +495,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 1.4357199668884277
+      Distance: 1.6080063581466675
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -549,10 +510,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.6847963929176331
+      Pitch: 0.43479645252227783
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.1285512447357178
+      Yaw: 2.3785507678985596
     Saved: ~
 Window Geometry:
   Displays:

@@ -2,7 +2,7 @@
 # Imports
 import rospy
 import sys
-from agile_grasp2.msg import GraspListMsg
+# from agile_grasp2.msg import GraspListMsg
 from geometry_msgs.msg import PoseStamped, WrenchStamped, PoseArray, Pose
 from visualization_msgs.msg import MarkerArray, Marker
 from shape_msgs.msg import SolidPrimitive
@@ -36,17 +36,17 @@ class State(Enum):
     SECOND_GRAB=2
     FINISHED=3
 
-class AgileState(Enum):
-    RESET = 0
-    WAIT_FOR_ONE = 1
-    READY = 2
+# class AgileState(Enum):
+#     RESET = 0
+#     WAIT_FOR_ONE = 1
+#     READY = 2
 
 # Transitions
-AGILE_STATE_TRANSITION = {
-    AgileState.RESET: AgileState.WAIT_FOR_ONE,
-    AgileState.WAIT_FOR_ONE: AgileState.READY,
-    AgileState.READY: AgileState.READY
-}
+# AGILE_STATE_TRANSITION = {
+#     AgileState.RESET: AgileState.WAIT_FOR_ONE,
+#     AgileState.WAIT_FOR_ONE: AgileState.READY,
+#     AgileState.READY: AgileState.READY
+# }
 
 GRAB_THRESHOLD = 8 # Newtons
 RELEASE_THRESHOLD = 8 # Newtons
@@ -89,7 +89,8 @@ class GraspExecutor:
         self.latest_force = 0.0
 
         # Hard-coded joint values
-        self.view_home_joints = [0.24985386431217194, -0.702608887349264, -2.0076406637774866, -1.7586587111102503, 1.5221580266952515, 0.25777095556259155]
+        # self.view_home_joints = [0.24985386431217194, -0.702608887349264, -2.0076406637774866, -1.7586587111102503, 1.5221580266952515, 0.25777095556259155]
+        self.view_home_joints = [0.07646834850311279, -0.7014802137957972, -2.008395496998922, -1.1388691107379358, 1.5221940279006958, 0.06542113423347473]
         self.move_home_joints = [ 0.0030537303537130356,-1.5737221876727503, -1.4044225851642054, -1.7411778608905237, 1.6028796434402466, 0.03232145681977272]
         # self.drop_object_joints = [0.14647944271564484, -1.8239172140704554, -1.0428651014911097, -1.8701766172992151, 1.6055123805999756, 0.03247687593102455]
         # self.deliver_object_joints = [-0.5880172888385218, -2.375404659901754, -0.8875716368304651, -1.437070671712057, 1.6041597127914429, 0.032297488301992416]
@@ -106,9 +107,9 @@ class GraspExecutor:
         self.corner_pos_list = [corner_1, corner_2, corner_3, corner_4]
 
         # AgileGrasp data
-        self.agile_data = 0
-        self.agile_state = AgileState.WAIT_FOR_ONE
-        rospy.Subscriber("/detect_grasps/grasps", GraspListMsg, self.agile_callback)
+        # self.agile_data = 0
+        # self.agile_state = AgileState.WAIT_FOR_ONE
+        # rospy.Subscriber("/detect_grasps/grasps", GraspListMsg, self.agile_callback)
 
         # Keep sleep here to allow scene to load
         rospy.sleep(3)
@@ -171,138 +172,143 @@ class GraspExecutor:
     def force_callback(self, wrench_msg):
         self.latest_force = abs(wrench_msg.wrench.force.z)
     
-    def agile_callback(self, data):
-        # Callback function for agilegrasp data
-        self.agile_data = data
-        self.agile_state = AGILE_STATE_TRANSITION[self.agile_state]
+    # def agile_callback(self, data):
+    #     # Callback function for agilegrasp data
+    #     self.agile_data = data
+    #     self.agile_state = AGILE_STATE_TRANSITION[self.agile_state]
 
     def gripper_state_callback(self, data):
         # function called when gripper data is received
         self.gripper_data = data
 
-    def find_best_grasp(self, data):
+    def find_best_grasp(self):
         # Determine the best grasp from agilegrasp grasp list
         # Angle at which grasps are performed
         grasp_angle = 30
         # Initialise values
         final_grasp_pose = 0
         final_grasp_pose_offset = 0
-        num_bad_angle = 0
-        num_bad_plan = 0
+        # num_bad_angle = 0
+        # num_bad_plan = 0
         # Grasp pose list
-        poses = []
+        # poses = []
         # Sort grasps by quality
-        data.grasps.sort(key=lambda x : x.score, reverse=True)
-        rospy.loginfo("Grasps Sorted!")
+        # data.grasps.sort(key=lambda x : x.score, reverse=True)
+        # rospy.loginfo("Grasps Sorted!")
         
-        for g in data.grasps:
-            # Position of grasp (On the object surface)
-            position =  g.surface
-            # rospy.loginfo("Grasp cam orientation found!")
-            # Create pose in camera frame
-            p_cam = PoseStamped()
-            # Grasp pose offset distance
-            offset_dist = 0.1 #0.2
-            
-            # Add position of agilegrasp grasp to pose
-            p_cam.pose.position.x = position.x 
-            p_cam.pose.position.y = position.y 
-            p_cam.pose.position.z = position.z
+        # Listen to tf
+        self.tf_listener_.waitForTransform("/orange0", "/base_link", rospy.Time(), rospy.Duration(4))
+        (trans,rot) = self.tf_listener_.lookupTransform('/orange0', '/base_link', rospy.Time(0))
+        x_pos = trans[0]
+        y_pos = trans[1]
 
-            # Listen to tf
-            self.tf_listener_.waitForTransform("/camera_link", "/base_link", rospy.Time(), rospy.Duration(4))
-            # Transform pose from camera frame to base frame
-            p_cam.header.frame_id = "camera_link"
-            p_base = self.tf_listener_.transformPose("/base_link", p_cam)
+        # Transform pose from orange to base frame
+        # p_cam.header.frame_id = "orange0"
+        # p_base = self.tf_listener_.transformPose("/base_link", p_cam)
+        
+        # # Position of grasp (On the object surface)
+        # position =  g.surface
+        # # rospy.loginfo("Grasp cam orientation found!")
 
-            # Find nearest corner
-            nearest_corner = self.find_nearest_corner(p_base)
+        p_base.header.frame_id = "/base_link"
 
-            # Convert positions to 2D
-            corner_pos = self.corner_pos_list[nearest_corner] # [x,y]
-            grasp_pos = [p_base.pose.position.x, p_base.pose.position.y] # [x,y]
+        # # Create pose in camera frame
+        p_base = PoseStamped()
+        # Grasp pose offset distance
+        offset_dist = 0.1 #0.2
+        
+        # Add position of agilegrasp grasp to pose
+        p_base.pose.position.x = x_pos 
+        p_base.pose.position.y = y_pos
+        # Ensure Z value is within target range 
+        p_base.pose.position.z = 0.08
 
-            # Find approach angle
-            x_angle, offset_pos = self.calculate_approach(nearest_corner, grasp_pos, corner_pos, -offset_dist)
+        # Listen to tf
+        # self.tf_listener_.waitForTransform("/camera_link", "/base_link", rospy.Time(), rospy.Duration(4))
+        # # Transform pose from camera frame to base frame
+        # p_cam.header.frame_id = "camera_link"
+        # p_base = self.tf_listener_.transformPose("/base_link", p_cam)
 
-            # Find angle of gripper to the ground from hard-coded value
-            y_angle = np.deg2rad(grasp_angle)
+        # Find nearest corner
+        nearest_corner = self.find_nearest_corner(p_base)
 
-            # Ensure Z value is within target range
-            # p_base.pose.position.z = min(p_base.pose.position.z, 0.240)
-            p_base.pose.position.z = 0.08 #max(p_base.pose.position.z, 0.080)
+        # Convert positions to 2D
+        corner_pos = self.corner_pos_list[nearest_corner] # [x,y]
+        grasp_pos = [p_base.pose.position.x, p_base.pose.position.y] # [x,y]
 
-            # Print results
-            rospy.loginfo("Nearest corner: %d", nearest_corner)
-            # rospy.loginfo("Corner Position - X: %f Y:%f", corner_pos[0], corner_pos[1])
-            rospy.loginfo("Grasp Position - X: %f Y:%f Z:%f", grasp_pos[0], grasp_pos[1], p_base.pose.position.z)
-            # rospy.loginfo("Z-angle: %f", np.rad2deg(z_angle))
+        # Find approach angle
+        x_angle, offset_pos = self.calculate_approach(nearest_corner, grasp_pos, corner_pos, -offset_dist)
 
-            # Generate pose
-            p_base = self.generate_push_pose(p_base, y_angle, x_angle)
+        # Find angle of gripper to the ground from hard-coded value
+        y_angle = np.deg2rad(grasp_angle)
 
-            # Create offset pose
-            p_base_offset = copy.deepcopy(p_base)
-            p_base_offset.pose.position.x = offset_pos[0]
-            p_base_offset.pose.position.y = offset_pos[1]
+        # Ensure Z value is within target range
 
-            # Add pose to pose list
-            poses.append(copy.deepcopy(p_base.pose))
+        # Print results
+        rospy.loginfo("Nearest corner: %d", nearest_corner)
+        # rospy.loginfo("Corner Position - X: %f Y:%f", corner_pos[0], corner_pos[1])
+        rospy.loginfo("Grasp Position - X: %f Y:%f Z:%f", grasp_pos[0], grasp_pos[1], p_base.pose.position.z)
+        # rospy.loginfo("Z-angle: %f", np.rad2deg(z_angle))
 
-            # Create pose array and add valid grasps
-            posearray = PoseArray()
-            posearray.poses = poses
-            posearray.header.frame_id = "base_link"
+        # Generate pose
+        p_base = self.generate_push_pose(p_base, y_angle, x_angle)
 
-            # Publish grasp array
-            self.pose_publisher.publish(posearray)
-            
-            # Check path planning from home state to offset grasp pose
-            # self.move_group.set_start_state(self.move_home_robot_state)
-            self.move_group.set_start_state(self.view_home_robot_state)
-            self.move_group.set_pose_target(p_base_offset)
-            plan_to_offset = self.move_group.plan()
+        # Create offset pose
+        p_base_offset = copy.deepcopy(p_base)
+        p_base_offset.pose.position.x = offset_pos[0]
+        p_base_offset.pose.position.y = offset_pos[1]
 
-            # # Check path planning from home state to offset pose
-            # self.move_group.set_start_state(self.move_home_robot_state)
-            # self.move_group.set_pose_target(p_base)
-            # plan_to_grasp = self.move_group.plan()
+        # Add pose to pose list
+        poses.append(copy.deepcopy(p_base.pose))
 
-            # Clear target
-            self.move_group.clear_pose_targets()
-            # If plan to offset is valid
-            if plan_to_offset.joint_trajectory.points:
-                # Show plan to check with user
-                valid_path = self.user_check_path(p_base_offset, plan=plan_to_offset)
+        # Create pose array and add valid grasps
+        posearray = PoseArray()
+        posearray.poses = poses
+        posearray.header.frame_id = "base_link"
 
-                if valid_path:
-                    # Find robot state of offset position
-                    next_robot_state = self.get_robot_state(plan_to_offset.joint_trajectory.points[-1].positions)
+        # Publish grasp array
+        self.pose_publisher.publish(posearray)
+        
+        # Check path planning from home state to offset grasp pose
+        # self.move_group.set_start_state(self.move_home_robot_state)
+        self.move_group.set_start_state(self.view_home_robot_state)
+        self.move_group.set_pose_target(p_base_offset)
+        plan_to_offset = self.move_group.plan()
 
-                    # Create pose in the corner to move towards
-                    corner_p_base = copy.deepcopy(p_base_offset.pose)
-                    corner_p_base.position.x = corner_pos[0]
-                    corner_p_base.position.y = corner_pos[1]
+        # Clear target
+        self.move_group.clear_pose_targets()
 
-                    # Create plan from offset grasp pos to corner grasp pos
-                    # TODO: Velocity stuff
-                    self.move_group.set_start_state(next_robot_state)
-                    self.move_group.set_pose_target(corner_p_base)
-                    plan_to_corner = self.move_group.plan()
+        # If plan to offset is valid
+        if plan_to_offset.joint_trajectory.points:
+            # Show plan to check with user
+            valid_path = self.user_check_path(p_base_offset, plan=plan_to_offset)
 
-                    # Use current poses as final grasp poses
-                    final_grasp_pose = p_base
-                    final_grasp_pose_offset = p_base_offset
-                    rospy.loginfo("Final grasp found!")
-                    poses = [poses[-1]]
-                    break
-                else:
-                    rospy.loginfo("Invalid path to offset pose")
-                    num_bad_plan += 1
+            if valid_path:
+                # Find robot state of offset position
+                next_robot_state = self.get_robot_state(plan_to_offset.joint_trajectory.points[-1].positions)
 
+                # Create pose in the corner to move towards
+                corner_p_base = copy.deepcopy(p_base_offset.pose)
+                corner_p_base.position.x = corner_pos[0]
+                corner_p_base.position.y = corner_pos[1]
+
+                # Create plan from offset grasp pos to corner grasp pos
+                # TODO: Velocity stuff
+                self.move_group.set_start_state(next_robot_state)
+                self.move_group.set_pose_target(corner_p_base)
+                plan_to_corner = self.move_group.plan()
+
+                # Use current poses as final grasp poses
+                final_grasp_pose = p_base
+                final_grasp_pose_offset = p_base_offset
+                rospy.loginfo("Final grasp found!")
+                poses = [poses[-1]]
             else:
                 rospy.loginfo("Invalid path to offset pose")
-                num_bad_plan += 1
+                # num_bad_plan += 1
+        else:
+            rospy.loginfo("Invalid path to offset pose")
+            # num_bad_plan += 1
 
         # Create pose array and add valid grasps
         posearray = PoseArray()
@@ -313,8 +319,8 @@ class GraspExecutor:
         # Publish grasp array
         self.pose_publisher.publish(posearray)
         # Print number of invalid plans
-        rospy.loginfo("# bad angle: " + str(num_bad_angle))
-        rospy.loginfo("# bad plan: " + str(num_bad_plan))
+        # rospy.loginfo("# bad angle: " + str(num_bad_angle))
+        # rospy.loginfo("# bad plan: " + str(num_bad_plan))
 
         # If there is no valid grasp
         if not final_grasp_pose:
@@ -396,12 +402,14 @@ class GraspExecutor:
         # self.move_to_position(final_grasp_pose)
 
         # push grasp
-        force_threshold = 5
+        force_threshold = 6
         # Remove walls
         self.scene.remove_world_object(self.back_wall_name)
         self.scene.remove_world_object(self.left_wall_name)
 
         self.push_grasp(corner_pose, force_threshold, plan_to_corner)
+
+        rospy.sleep(1)
 
         self.move_to_position(self.lift_up_pose())
 
@@ -441,8 +449,10 @@ class GraspExecutor:
 
             run_flag = raw_input("Valid Trajectory [y to run]? or display path again [d to display]:")
 
-        if run_flag =="y":
+        if run_flag == "y":
             self.move_group.execute(plan, wait=True)
+        else:
+            rospy.loginfo("Path cancelled")
 
 
         self.move_group.stop()
@@ -502,6 +512,8 @@ class GraspExecutor:
             rospy.loginfo("Close gripper")
             self.command_gripper(close_gripper_msg())
             rospy.sleep(.1)
+        else:
+            rospy.loginfo("Path cancelled")
 
         self.move_group.stop()
         self.move_group.clear_pose_targets()
@@ -546,6 +558,8 @@ class GraspExecutor:
         lift_dist = 0.05
         new_pose = self.move_group.get_current_pose()
         new_pose.pose.position.z += lift_dist
+
+
         return new_pose
 
     def get_robot_state(self, joint_list):
@@ -624,17 +638,18 @@ class GraspExecutor:
             # pcl_process = self.launch_pcl_process(pcl_node)
 
             #Wait for a valid reading from agile grasp
-            self.agile_state = AgileState.RESET
-            while self.agile_state is not AgileState.READY:
-                rospy.loginfo("Waiting for agile grasp")
-                rospy.sleep(2)
+            # self.agile_state = AgileState.RESET
+            # while self.agile_state is not AgileState.READY:
+            #     rospy.loginfo("Waiting for agile grasp")
+            #     rospy.sleep(2)
             
-            rospy.loginfo("Grasp detection complete")
+            # rospy.loginfo("Grasp detection complete")
             #Stop pcl
             self.stop_pcl_process(pcl_process)
 
             #Find best grasp from reading
-            final_grasp_pose, final_grasp_pose_offset, plan_to_offset, plan_to_final, corner_pose = self.find_best_grasp(self.agile_data)
+            # final_grasp_pose, final_grasp_pose_offset, plan_to_offset, plan_to_final, corner_pose = self.find_best_grasp(self.agile_data)
+            final_grasp_pose, final_grasp_pose_offset, plan_to_offset, plan_to_final, corner_pose = self.find_best_grasp()
 
             m1 = self.makeMarker(final_grasp_pose, (1,0,0),0 )
             m2 = self.makeMarker(final_grasp_pose_offset, (0,1,0), 1)
