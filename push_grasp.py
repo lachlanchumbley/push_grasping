@@ -81,10 +81,8 @@ class GraspExecutor:
 
         # Hard-coded joint values
         # self.view_home_joints = [0.24985386431217194, -0.702608887349264, -2.0076406637774866, -1.7586587111102503, 1.5221580266952515, 0.25777095556259155]
-        self.view_home_joints = [0.07646834850311279, -0.7014802137957972, -2.008395496998922, -1.1388691107379358,
-                                 1.5221940279006958, 0.06542113423347473]
-        self.move_home_joints = [0.0030537303537130356, -1.5737221876727503, -1.4044225851642054, -1.7411778608905237,
-                                 1.6028796434402466, 0.03232145681977272]
+        self.view_home_joints = [0.07646834850311279, -0.7014802137957972, -2.008395496998922, -1.1388691107379358, 1.5221940279006958, 0.06542113423347473]
+        self.move_home_joints = [0.0030537303537130356, -1.5737221876727503, -1.4044225851642054, -1.7411778608905237, 1.6028796434402466, 0.03232145681977272]
 
         # Set default robot states
         self.move_home_robot_state = self.get_robot_state(self.move_home_joints)
@@ -123,7 +121,7 @@ class GraspExecutor:
         roof_pose.pose.orientation.w = 1.0
         roof_pose.pose.position.x = -0.75
         roof_pose.pose.position.y = -0.0
-        roof_pose.pose.position.z = 0.65
+        roof_pose.pose.position.z = 0.67
 
         self.roof_name = "roof"
         self.scene.add_box(self.roof_name, roof_pose, size=(2.5, 1.4, 0.01))
@@ -175,6 +173,7 @@ class GraspExecutor:
 
     def force_callback(self, wrench_msg):
         self.latest_force = abs(wrench_msg.wrench.force.z)
+        # rospy.loginfo("Force: %f", self.latest_force)
 
     def gripper_state_callback(self, data):
         # function called when gripper data is received
@@ -187,7 +186,7 @@ class GraspExecutor:
         final_grasp_pose = 0
         final_grasp_pose_offset = 0
         # Z value
-        z_value = 0.08
+        z_value = 0.06
         # Grasp pose offset distance
         offset_dist = 0.1  # 0.2
         # Grasp pose list
@@ -195,18 +194,12 @@ class GraspExecutor:
 
         # Listen to tf
         self.tf_listener_.waitForTransform("/orange0", "/base_link", rospy.Time(), rospy.Duration(4))
-        (trans, rot) = self.tf_listener_.lookupTransform('/orange0', '/base_link', rospy.Time(0))
+        (trans, rot) = self.tf_listener_.lookupTransform('/base_link','/orange0', rospy.Time(0))
         x_pos = trans[0]
         y_pos = trans[1]
         rospy.loginfo("Apple Found!")
-
-        # Transform pose from orange to base frame
-        # p_cam.header.frame_id = "orange0"
-        # p_base = self.tf_listener_.transformPose("/base_link", p_cam)
-
-        # # Position of grasp (On the object surface)
-        # position =  g.surface
-        # # rospy.loginfo("Grasp cam orientation found!")
+        rospy.loginfo("X: %f", x_pos)
+        rospy.loginfo("Y: %f", y_pos)
 
         # # Create pose in camera frame
         p_base = PoseStamped()
@@ -217,12 +210,6 @@ class GraspExecutor:
         p_base.pose.position.y = y_pos
         # Set z to set value
         p_base.pose.position.z = z_value
-
-        # Listen to tf
-        # self.tf_listener_.waitForTransform("/camera_link", "/base_link", rospy.Time(), rospy.Duration(4))
-        # # Transform pose from camera frame to base frame
-        # p_cam.header.frame_id = "camera_link"
-        # p_base = self.tf_listener_.transformPose("/base_link", p_cam)
 
         # Find nearest corner
         # nearest_corner = self.find_nearest_corner(p_base)
@@ -263,46 +250,54 @@ class GraspExecutor:
         # Publish grasp array
         self.pose_publisher.publish(posearray)
 
-        # Check path planning from home state to offset grasp pose
-        # self.move_group.set_start_state(self.move_home_robot_state)
-        self.move_group.set_start_state(self.view_home_robot_state)
-        self.move_group.set_pose_target(p_base_offset)
-        plan_to_offset = self.move_group.plan()
+        valid_grasp = False
+        run_flag = "n"
+        while valid_grasp == False:
+            # Check path planning from home state to offset grasp pose
+            # self.move_group.set_start_state(self.move_home_robot_state)
+            self.move_group.set_start_state(self.view_home_robot_state)
+            self.move_group.set_pose_target(p_base_offset)
+            plan_to_offset = self.move_group.plan()
 
-        # Clear target
-        self.move_group.clear_pose_targets()
+            # Clear target
+            self.move_group.clear_pose_targets()
 
-        # If plan to offset is valid
-        if plan_to_offset.joint_trajectory.points:
-            # Show plan to check with user
-            valid_path = self.user_check_path(p_base_offset, plan=plan_to_offset)
-            # If user confirms the path
-            if valid_path:
-                # Find robot state of offset position
-                next_robot_state = self.get_robot_state(plan_to_offset.joint_trajectory.points[-1].positions)
+            # If plan to offset is valid
+            if plan_to_offset.joint_trajectory.points:
+                # Show plan to check with user
+                valid_path = self.user_check_path(p_base_offset, plan=plan_to_offset)
+                # If user confirms the path
+                if valid_path:
+                    # Find robot state of offset position
+                    next_robot_state = self.get_robot_state(plan_to_offset.joint_trajectory.points[-1].positions)
 
-                # Create pose in the corner to move towards
-                corner_p_base = copy.deepcopy(p_base_offset.pose)
-                corner_p_base.position.x = corner_pos[0]
-                corner_p_base.position.y = corner_pos[1]
+                    # Create pose in the corner to move towards
+                    corner_p_base = copy.deepcopy(p_base_offset.pose)
+                    corner_p_base.position.x = corner_pos[0]
+                    corner_p_base.position.y = corner_pos[1]
 
-                # Create plan from offset grasp pos to corner grasp pos
-                self.move_group.set_start_state(next_robot_state)
-                self.move_group.set_pose_target(corner_p_base)
-                plan_to_corner = self.move_group.plan()
+                    # Create plan from offset grasp pos to corner grasp pos
+                    self.move_group.set_start_state(next_robot_state)
+                    self.move_group.set_pose_target(corner_p_base)
+                    plan_to_corner = self.move_group.plan()
 
-                # Use current poses as final grasp poses
-                final_grasp_pose = p_base
-                final_grasp_pose_offset = p_base_offset
-                rospy.loginfo("Final grasp found!")
-                # Append pose to pose array
-                poses = [poses[-1]]
+                    # Use current poses as final grasp poses
+                    final_grasp_pose = p_base
+                    final_grasp_pose_offset = p_base_offset
+                    rospy.loginfo("Final grasp found!")
+                    # Append pose to pose array
+                    poses = [poses[-1]]
+                    valid_grasp = True
+                else:
+                    rospy.loginfo("Invalid path to offset pose")
+                    run_flag = raw_input("Cancel? (y or n)")
+                    # num_bad_plan += 1
             else:
                 rospy.loginfo("Invalid path to offset pose")
-                # num_bad_plan += 1
-        else:
-            rospy.loginfo("Invalid path to offset pose")
-            # num_bad_plan += 1
+                run_flag = raw_input("Cancel? (y or n)")
+
+            if run_flag == "y":
+                pass
 
         # Create pose array and add valid grasps
         posearray = PoseArray()
@@ -312,9 +307,6 @@ class GraspExecutor:
         # rospy.loginfo("final_grasp_pose", final_grasp_pose)
         # Publish grasp array
         self.pose_publisher.publish(posearray)
-        # Print number of invalid plans
-        # rospy.loginfo("# bad angle: " + str(num_bad_angle))
-        # rospy.loginfo("# bad plan: " + str(num_bad_plan))
 
         # If there is no valid grasp
         if not final_grasp_pose:
@@ -396,7 +388,7 @@ class GraspExecutor:
         # self.move_to_position(final_grasp_pose)
 
         # push grasp
-        force_threshold = 6
+        force_threshold = 28
         # Remove walls
         self.scene.remove_world_object(self.back_wall_name)
         self.scene.remove_world_object(self.left_wall_name)
@@ -405,7 +397,8 @@ class GraspExecutor:
 
         rospy.sleep(1)
 
-        self.move_to_position(self.lift_up_pose())
+        # pose, plan = 
+        self.move_to_position(*self.lift_up_pose())
 
         rospy.sleep(1)
         if self.gripper_data.gOBJ == 3:
@@ -415,12 +408,10 @@ class GraspExecutor:
         else:
             # Go to move home position using joint
             self.move_to_joint_position(self.move_home_joints)
-            self.move_to_joint_position(self.drop_object_joints)
+            # self.move_to_joint_position(self.drop_object_joints)
             self.command_gripper(open_gripper_msg())
-            self.move_to_joint_position(self.move_home_joints)
+            # self.move_to_joint_position(self.move_home_joints)
             self.move_to_joint_position(self.view_home_joints)
-
-            self.state = State.SECOND_GRAB
 
         rospy.sleep(2)
 
@@ -487,6 +478,60 @@ class GraspExecutor:
         if run_flag == "y":
             self.move_group.execute(plan, wait=False)
             # Check force feedback
+            rospy.sleep(0.5)
+            # baseline_force = 0
+            while self.latest_force < baseline_force:
+                # Get position of gripper
+                current_pose = self.move_group.get_current_pose()
+                current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
+                final_pose_coords = [final_pose.position.x, final_pose.position.y]
+                distance_to_corner = self.dist_two_points(current_pose_coords, final_pose_coords)
+                # Distance to orange
+                self.tf_listener_.waitForTransform("/orange0", "/base_link", rospy.Time(), rospy.Duration(4))
+                (trans, rot) = self.tf_listener_.lookupTransform('/base_link','/orange0', rospy.Time(0))
+                obj_coords = [trans[0], trans[1]]
+                distance_to_obj = self.dist_two_points(current_pose_coords, obj_coords)
+                rospy.loginfo("Distance to object: %f", distance_to_obj)
+                rospy.loginfo("Force: %f", self.latest_force)
+
+                if distance_to_obj < 0.01:
+                    rospy.loginfo("Contact with orange")
+                    baseline_force = self.latest_force + 2
+
+                if distance_to_corner < 0.05:
+                    rospy.loginfo("Close to corner")
+                    break
+
+            rospy.sleep(.1)
+            rospy.loginfo("Close gripper")
+            self.command_gripper(close_gripper_msg())
+            rospy.sleep(.1)
+        else:
+            rospy.loginfo("Path cancelled")
+
+        self.move_group.stop()
+        self.move_group.clear_pose_targets()
+
+    # TODO: closed loop push grasp
+    def closed_loop_push_grasp(self, final_pose, force_threshold, plan=None):
+        self.move_group.set_pose_target(final_pose)
+        if not plan:
+            plan = self.move_group.plan()
+
+        run_flag = "d"
+
+        while run_flag == "d":
+            display_trajectory = moveit_msgs.msg.DisplayTrajectory()
+            display_trajectory.trajectory_start = self.robot.get_current_state()
+            display_trajectory.trajectory.append(plan)
+            self.display_trajectory_publisher.publish(display_trajectory)
+
+            run_flag = raw_input("Execute to this corner? (y or n):")
+
+        if run_flag == "y":
+            # Move increment towards corner
+
+            # Check force feedback
             rospy.sleep(.5)
             while self.latest_force < force_threshold:
                 # Get position of gripper
@@ -547,7 +592,11 @@ class GraspExecutor:
         new_pose = self.move_group.get_current_pose()
         new_pose.pose.position.z += lift_dist
 
-        return new_pose
+        self.move_group.set_start_state_to_current_state()
+        self.move_group.set_pose_target(new_pose)
+        plan_to_lift = self.move_group.plan()
+
+        return new_pose, plan_to_lift
 
     def get_robot_state(self, joint_list):
         joint_state = JointState()
@@ -639,11 +688,11 @@ class GraspExecutor:
             # final_grasp_pose, final_grasp_pose_offset, plan_to_offset, plan_to_final, corner_pose = self.find_best_grasp(self.agile_data)
             final_grasp_pose, final_grasp_pose_offset, plan_to_offset, plan_to_final, corner_pose = self.find_best_grasp()
 
-            m1 = self.makeMarker(final_grasp_pose, (1, 0, 0), 0)
-            m2 = self.makeMarker(final_grasp_pose_offset, (0, 1, 0), 1)
-            m_array = MarkerArray()
-            m_array.markers = [m1, m2]
-            self.vis_pub.publish(m_array)
+            # m1 = self.makeMarker(final_grasp_pose, (1, 0, 0), 0)
+            # m2 = self.makeMarker(final_grasp_pose_offset, (0, 1, 0), 1)
+            # m_array = MarkerArray()
+            # m_array.markers = [m1, m2]
+            # self.vis_pub.publish(m_array)
 
             if final_grasp_pose:
                 self.run_motion(final_grasp_pose_offset, plan_to_offset, plan_to_final, corner_pose)
@@ -651,10 +700,8 @@ class GraspExecutor:
             else:
                 rospy.loginfo("No pose target generated!")
 
-            if self.state == State.SECOND_GRAB:
-                rospy.loginfo("Task complete!")
-                rospy.spin()
-
+            rospy.loginfo("Task complete!")
+            rospy.spin()
             rate.sleep()
 
 
