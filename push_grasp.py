@@ -517,7 +517,13 @@ class GraspExecutor:
         self.move_group.set_pose_target(final_pose)
         if not plan:
             plan = self.move_group.plan()
-
+            # Slow down plan
+            self.move_group.retime_trajectory(self.robot.get_current_state(),
+                                              plan,
+                                              velocity_scaling_factor=1.0,
+                                              acceleration_scaling_factor=1.0,
+                                              algorithm="iterative_time_parameterization"
+                                              )
         run_flag = "d"
 
         while run_flag == "d":
@@ -529,19 +535,47 @@ class GraspExecutor:
             run_flag = raw_input("Execute to this corner? (y or n):")
 
         if run_flag == "y":
-            # Move increment towards corner
-
-            # Check force feedback
-            rospy.sleep(.5)
             while self.latest_force < force_threshold:
-                # Get position of gripper
-                current_pose = self.move_group.get_current_pose()
-                current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
-                final_pose_coords = [final_pose.position.x, final_pose.position.y]
-                distance_to_corner = self.dist_two_points(current_pose_coords, final_pose_coords)
-                if distance_to_corner < 0.05:
-                    rospy.loginfo("Close to corner")
-                    break
+                # Move towards corner
+                self.move_group.execute(plan, wait=False)
+                # Check force feedback
+                rospy.sleep(.5)
+                obj_in_front = True
+
+                while obj_in_front:
+                    # Get position of gripper
+                    current_pose = self.move_group.get_current_pose()
+                    current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
+
+                    # Distance to corner
+                    final_pose_coords = [final_pose.position.x, final_pose.position.y]
+                    distance_to_corner = self.dist_two_points(current_pose_coords, final_pose_coords)
+
+                    # Location of orange
+                    self.tf_listener_.waitForTransform("/orange0", "/camera_link", rospy.Time(), rospy.Duration(4))
+                    (trans, rot) = self.tf_listener_.lookupTransform('/camera_link', '/orange0', rospy.Time(0))
+                    x_pos_of_obj = trans[0]
+                    # Check if too far to the left
+                    if x_pos_of_obj < 200:
+                        # self.move_group.clear_pose_targets()
+                        # rotate until obj_in_front
+                        # plan to corner
+
+                    elif x_pos_of_obj > 400:
+                        # self.move_group.clear_pose_targets()
+                        # rotate until obj_in_front
+                        # plan to corner
+                        # execute
+
+                    if self.latest_force < force_threshold:
+                        close_gripper_flag = True
+                        break
+
+                    if distance_to_corner < 0.05:
+                        rospy.loginfo("Close to corner")
+                        close_gripper_flag = True
+                        break
+
             rospy.sleep(.1)
             rospy.loginfo("Close gripper")
             self.command_gripper(close_gripper_msg())
