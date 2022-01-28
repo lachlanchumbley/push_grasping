@@ -15,6 +15,7 @@ from time import sleep
 import roslaunch
 import math
 import pdb
+from cv_bridge import CvBridge
 
 import moveit_commander
 import moveit_msgs.msg
@@ -95,7 +96,8 @@ class GraspExecutor:
         corner_1 = [-0.830, 0.225]
         corner_2 = [-0.405, 0.225]
         corner_3 = [-0.405, -0.130]
-        corner_4 = [-0.830, -0.130]
+        # corner_4 = [-0.830, -0.130]
+        corner_4 = [-0.870, 0.080]
         self.corner_pos_list = [corner_1, corner_2, corner_3, corner_4]
 
         # Keep sleep here to allow scene to load
@@ -111,11 +113,11 @@ class GraspExecutor:
 
         # Add left wall
         self.left_wall_name = "left_wall"
-        self.add_left_wall()
+        # self.add_left_wall()
 
         # Add left wall
         self.back_wall_name = "back_wall"
-        self.add_back_wall()
+        # self.add_back_wall()
 
         # Add roof
         self.roof_name = "roof"
@@ -127,7 +129,7 @@ class GraspExecutor:
         
         self.switch_controller = rospy.ServiceProxy('/controller_manager/switch_controller', SwitchController)
         self.start_controllers = ["twist_controller"]
-        self.stop_controllers = ["joint_state_controller", "scaled_pos_joint_traj_controller"]
+        self.stop_controllers = ["scaled_pos_joint_traj_controller"]
         self.strictness = 1
         self.start_asap = True
         self.timeout = 5.0
@@ -139,6 +141,14 @@ class GraspExecutor:
         self.twist_pub = rospy.Publisher('/twist_controller/command', Twist, queue_size=1)
         # Load twist controller
         ok = load_controller(load_controllers_name)
+
+        # RGB Image
+        self.rgb_sub = rospy.Subscriber('/realsense/rgb', sensor_msgs/Image, self.rgb_callback)
+
+    def rgb_callback(self, image):
+        bridge = CvBridge()
+        cv_image = bridge.imgmsg_to_cv2(image, desired_encoding='passthrough')
+
     
     def turn_on_twist_controller(self):
         try:
@@ -413,7 +423,23 @@ class GraspExecutor:
         self.scene.remove_world_object(self.back_wall_name)
         self.scene.remove_world_object(self.left_wall_name)
 
-        self.vel_push_grasp(corner_pose, force_threshold)
+        # Location of orange
+        # cancel_flag = "n"
+        # while True:
+        #     self.tf_listener_.waitForTransform("/orange0", "/camera_link", rospy.Time(), rospy.Duration(4))
+        #     (trans, rot) = self.tf_listener_.lookupTransform('/camera_link', '/orange0', rospy.Time(0))
+        #     x_pos_of_obj = trans[0]
+        #     rospy.loginfo("X pos of object: %f", x_pos_of_obj)
+        #     cancel_flag = raw_input("Cancel? (y or n)")
+        #     if cancel_flag == "y":
+        #             break
+
+        loop_flag = raw_input("Closed loop? (y or n)")
+        if loop_flag == "y":
+            self.closed_loop_push_grasp(corner_pose, force_threshold)
+        else:
+            self.vel_push_grasp(corner_pose, force_threshold)
+
         # self.push_grasp(corner_pose, force_threshold, plan_to_corner)
 
         rospy.sleep(1)
@@ -534,23 +560,10 @@ class GraspExecutor:
         self.move_group.clear_pose_targets()
 
     def vel_push_grasp(self, final_pose, force_threshold):
-
-        current_pose = self.move_group.get_current_pose()
-        x_diff = -(final_pose.position.x - current_pose.pose.position.x)
-        y_diff = -(final_pose.position.y - current_pose.pose.position.y)
-
-        rospy.loginfo("X diff: %f", x_diff)
-        rospy.loginfo("Y diff: %f", x_diff)
-        rospy.sleep(5)
-
-        stop_twist = Twist()
-        
-        move_twist = Twist()
-        move_twist.linear.x = x_diff / 10
-        move_twist.linear.y = y_diff / 10
-
         run_flag = "n"
-
+        current_force = 0
+        move_twist = self.plan_linear_twist(final_pose)
+        stop_twist = Twist()
         run_flag = raw_input("Ready? (y or n):")
 
         if run_flag == "y":
@@ -559,32 +572,29 @@ class GraspExecutor:
         else:
             pass
 
-        current_force = 0
-        rospy.sleep(0.5)
         while current_force < force_threshold:
             # Get position of gripper
-            #TODO: can't get pose!
-            # current_pose = self.move_group.get_current_pose()
+            current_pose = self.move_group.get_current_pose()
+            current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
+            final_pose_coords = [final_pose.position.x, final_pose.position.y]
+            distance_to_corner = self.dist_two_points(current_pose_coords, final_pose_coords)
 
-            # current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
-            # final_pose_coords = [final_pose.position.x, final_pose.position.y]
-            # distance_to_corner = self.dist_two_points(current_pose_coords, final_pose_coords)
-            # # Distance to orange
-            # self.tf_listener_.waitForTransform("/orange0", "/base_link", rospy.Time(), rospy.Duration(4))
-            # (trans, rot) = self.tf_listener_.lookupTransform('/base_link','/orange0', rospy.Time(0))
-            # obj_coords = [trans[0], trans[1]]
-            # distance_to_obj = self.dist_two_points(current_pose_coords, obj_coords)
-            # rospy.loginfo("Distance to object: %f", distance_to_obj)
+            # Distance to orange
+            self.tf_listener_.waitForTransform("/orange0", "/base_link", rospy.Time(), rospy.Duration(4))
+            (trans, rot) = self.tf_listener_.lookupTransform('/base_link','/orange0', rospy.Time(0))
+            obj_coords = [trans[0], trans[1]]
+            distance_to_obj = self.dist_two_points(current_pose_coords, obj_coords)
+            rospy.loginfo("Distance to object: %f", distance_to_obj)
             # rospy.loginfo("Force: %f", self.latest_force)
 
-            # if distance_to_corner < 0.15:
-            #     rospy.loginfo("Within range")
-            #     current_force = self.latest_force
-            current_force = self.latest_force
+            if distance_to_corner < 0.15:
+                # rospy.loginfo("Within range")
+                current_force = self.latest_force
+                rospy.loginfo("Force: %f", self.latest_force)
 
-            # if distance_to_corner < 0.05:
-            #     rospy.loginfo("Close to corner")
-            #     break
+            if distance_to_corner < 0.05:
+                rospy.loginfo("Close to corner")
+                break
 
         rospy.sleep(.1)
         rospy.loginfo("Close gripper")
@@ -596,80 +606,124 @@ class GraspExecutor:
         # Turn traj controller back on
         self.turn_on_joint_traj_controller()
 
-    
-    # TODO: closed loop push grasp
-    def closed_loop_push_grasp(self, final_pose, force_threshold, plan=None):
-        self.move_group.set_pose_target(final_pose)
-        if not plan:
-            plan = self.move_group.plan()
-            # Slow down plan
-            self.move_group.retime_trajectory(self.robot.get_current_state(),
-                                              plan,
-                                              velocity_scaling_factor=1.0,
-                                              acceleration_scaling_factor=1.0,
-                                              algorithm="iterative_time_parameterization"
-                                              )
-        run_flag = "d"
+    def closed_loop_push_grasp(self, final_pose, force_threshold):
+        run_flag = "n"
+        current_force = 0
 
-        while run_flag == "d":
-            display_trajectory = moveit_msgs.msg.DisplayTrajectory()
-            display_trajectory.trajectory_start = self.robot.get_current_state()
-            display_trajectory.trajectory.append(plan)
-            self.display_trajectory_publisher.publish(display_trajectory)
-
-            run_flag = raw_input("Execute to this corner? (y or n):")
-
+        run_flag = raw_input("Ready? (y or n):")
         if run_flag == "y":
-            while self.latest_force < force_threshold:
-                # Move towards corner
-                self.move_group.execute(plan, wait=False)
-                # Check force feedback
-                rospy.sleep(.5)
-                obj_in_front = True
-
-                while obj_in_front:
-                    # Get position of gripper
-                    current_pose = self.move_group.get_current_pose()
-                    current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
-
-                    # Distance to corner
-                    final_pose_coords = [final_pose.position.x, final_pose.position.y]
-                    distance_to_corner = self.dist_two_points(current_pose_coords, final_pose_coords)
-
-                    # Location of orange
-                    self.tf_listener_.waitForTransform("/orange0", "/camera_link", rospy.Time(), rospy.Duration(4))
-                    (trans, rot) = self.tf_listener_.lookupTransform('/camera_link', '/orange0', rospy.Time(0))
-                    x_pos_of_obj = trans[0]
-
-                    # # Check if too far to the left
-                    # if x_pos_of_obj < 200:
-                    #     # self.move_group.clear_pose_targets()
-                    #     # rotate until obj_in_front
-                    #     # plan to corner
-                    # elif x_pos_of_obj > 400:
-                    #     # self.move_group.clear_pose_targets()
-                    #     # rotate until obj_in_front
-                    #     # plan to corner
-                    #     # execute
-
-                    if self.latest_force < force_threshold:
-                        close_gripper_flag = True
-                        break
-
-                    if distance_to_corner < 0.05:
-                        rospy.loginfo("Close to corner")
-                        close_gripper_flag = True
-                        break
-
-            rospy.sleep(.1)
-            rospy.loginfo("Close gripper")
-            self.command_gripper(close_gripper_msg())
-            rospy.sleep(.1)
+            self.turn_on_twist_controller()
         else:
-            rospy.loginfo("Path cancelled")
+            pass
 
-        self.move_group.stop()
-        self.move_group.clear_pose_targets()
+        stop_twist = Twist()
+
+        while current_force < force_threshold:
+            # Move towards corner
+            move_twist = self.plan_linear_twist(final_pose)
+            self.twist_pub.publish(move_twist)
+
+            obj_in_front = True
+
+            while obj_in_front:
+                # Get position of gripper
+                current_pose = self.move_group.get_current_pose()
+                current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
+                final_pose_coords = [final_pose.position.x, final_pose.position.y]
+                distance_to_corner = self.dist_two_points(current_pose_coords, final_pose_coords)
+
+                # Distance to orange
+                self.tf_listener_.waitForTransform("/orange0", "/base_link", rospy.Time(), rospy.Duration(4))
+                (trans, rot) = self.tf_listener_.lookupTransform('/base_link','/orange0', rospy.Time(0))
+                obj_coords = [trans[0], trans[1]]
+                distance_to_obj = self.dist_two_points(current_pose_coords, obj_coords)
+                # rospy.loginfo("Distance to object: %f", distance_to_obj)
+
+                # Location of orange
+                self.tf_listener_.waitForTransform("/orange0", "/camera_link", rospy.Time(), rospy.Duration(4))
+                (trans, rot) = self.tf_listener_.lookupTransform('/camera_link', '/orange0', rospy.Time(0))
+                x_pos_of_obj = trans[0]
+                rospy.loginfo("X pos of object: %f", x_pos_of_obj)
+
+                # Check if too far to the right
+                if x_pos_of_obj > 0.025:
+                    rospy.loginfo("Object to the right")
+                    obj_in_front = False
+                    self.twist_pub.publish(stop_twist)
+                    # rotate until obj_in_front
+                    rot_twist = self.plan_rotation_twist("right")
+                    self.twist_pub.publish(rot_twist)
+                    while x_pos_of_obj > 0.025:
+                        # Location of orange
+                        self.tf_listener_.waitForTransform("/orange0", "/camera_link", rospy.Time(), rospy.Duration(4))
+                        (trans, rot) = self.tf_listener_.lookupTransform('/camera_link', '/orange0', rospy.Time(0))
+                        x_pos_of_obj = trans[0]
+                        rospy.loginfo("Rotating")
+                    self.twist_pub.publish(stop_twist)
+                # Check if too far to the left
+                elif x_pos_of_obj < -0.025:
+                    rospy.loginfo("Object to the left")
+                    obj_in_front = False
+                    self.twist_pub.publish(stop_twist)
+                    # rotate until obj_in_front
+                    rot_twist = self.plan_rotation_twist("left")
+                    self.twist_pub.publish(rot_twist)
+                    while x_pos_of_obj < -0.025:
+                        # Location of orange
+                        self.tf_listener_.waitForTransform("/orange0", "/camera_link", rospy.Time(), rospy.Duration(4))
+                        (trans, rot) = self.tf_listener_.lookupTransform('/camera_link', '/orange0', rospy.Time(0))
+                        x_pos_of_obj = trans[0]
+                        rospy.loginfo("Rotating")
+                    self.twist_pub.publish(stop_twist)
+
+                if distance_to_corner < 0.15:
+                    # rospy.loginfo("Within range")
+                    current_force = self.latest_force
+                    rospy.loginfo("Force: %f", self.latest_force)
+                    break
+
+                if distance_to_corner < 0.05:
+                    rospy.loginfo("Close to corner")
+                    break
+
+            # SOMETHIGS
+
+        rospy.sleep(.1)
+        rospy.loginfo("Close gripper")
+        self.command_gripper(close_gripper_msg())
+        # Stop movement
+        self.twist_pub.publish(stop_twist)
+        rospy.sleep(.1)
+
+        # Turn traj controller back on
+        self.turn_on_joint_traj_controller()
+
+    def plan_linear_twist(self, final_pose):
+        current_pose = self.move_group.get_current_pose()
+        x_diff = -(final_pose.position.x - current_pose.pose.position.x)
+        y_diff = -(final_pose.position.y - current_pose.pose.position.y)
+
+        rospy.loginfo("X diff: %f", x_diff)
+        rospy.loginfo("Y diff: %f", x_diff)
+        rospy.sleep(5)
+        
+        move_twist = Twist()
+        # TODO: Normalise values
+        move_twist.linear.x = x_diff / 10
+        move_twist.linear.y = y_diff / 10
+
+        return move_twist
+
+    def plan_rotation_twist(self, direction):
+        move_twist = Twist()
+        if direction == "left":
+            move_twist.angular.z = 0.05
+        elif direction == "right":
+            move_twist.angular.z = -0.05
+        else:
+            rospy.loginfo("Invalid direction")
+
+        return move_twist
 
     def move_to_joint_position(self, joint_array, plan=None):
         self.move_group.set_joint_value_target(joint_array)
@@ -785,9 +839,9 @@ class GraspExecutor:
 
         while not rospy.is_shutdown():
             # Boot up pcl
-            # TODO: remove preprocess?
-            pcl_node = roslaunch.core.Node('push_grasp', 'pcl_preprocess_node.py')
-            pcl_process = self.launch_pcl_process(pcl_node)
+            # TODO: remove preprocess? Feed it into colour segmentation
+            # pcl_node = roslaunch.core.Node('push_grasp', 'pcl_preprocess_node.py')
+            # pcl_process = self.launch_pcl_process(pcl_node)
 
             # TODO: rosrun robotiq_2f_gripper_control Robotiq2FGripperRtuNode.py /dev/ttyUSB0
             # pcl_node = roslaunch.core.Node('push_grasp', 'pcl_preprocess_node.py')
@@ -801,7 +855,7 @@ class GraspExecutor:
 
             # rospy.loginfo("Grasp detection complete")
             # Stop pcl
-            self.stop_pcl_process(pcl_process)
+            # self.stop_pcl_process(pcl_process)
 
             # Find best grasp from reading
             # final_grasp_pose, final_grasp_pose_offset, plan_to_offset, plan_to_final, corner_pose = self.find_best_grasp(self.agile_data)
