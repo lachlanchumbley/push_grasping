@@ -15,7 +15,9 @@ from time import sleep
 import roslaunch
 import math
 import pdb
+import cv2
 from cv_bridge import CvBridge
+
 
 import moveit_commander
 import moveit_msgs.msg
@@ -31,6 +33,7 @@ from pyquaternion import Quaternion
 
 import pdb
 from enum import Enum
+from blob_detect import
 
 from controller_manager_msgs.srv import SwitchController, LoadController
 
@@ -126,7 +129,7 @@ class GraspExecutor:
         # self.switch_controller_server()
 
         rospy.wait_for_service('/controller_manager/switch_controller')
-        
+
         self.switch_controller = rospy.ServiceProxy('/controller_manager/switch_controller', SwitchController)
         self.start_controllers = ["twist_controller"]
         self.stop_controllers = ["scaled_pos_joint_traj_controller"]
@@ -144,12 +147,20 @@ class GraspExecutor:
 
         # RGB Image
         self.rgb_sub = rospy.Subscriber('/realsense/rgb', sensor_msgs/Image, self.rgb_callback)
+        self.cv_image = []
+        self.image_rows = 0
 
     def rgb_callback(self, image):
         bridge = CvBridge()
-        cv_image = bridge.imgmsg_to_cv2(image, desired_encoding='passthrough')
+        self.cv_image = bridge.imgmsg_to_cv2(image, desired_encoding='passthrough')
+        (self.image_rows,cols,channels) = cv_image.shape
 
-    
+    def blob_detect(self, image, lower, upper):
+        # find the colors within the specified boundaries and apply the mask
+        mask = cv2.inRange(image, lower, upper)
+        output = cv2.bitwise_and(image, image, mask = mask)
+
+
     def turn_on_twist_controller(self):
         try:
             # Turn on twist controller
@@ -376,7 +387,7 @@ class GraspExecutor:
             distance_list[i] = self.dist_two_points(grasp_pos, corner_pos)
             rospy.loginfo("Distance to corner number %d: %f", i, distance_list[i])
 
-        # Nearest corner 
+        # Nearest corner
         nearest_corner = distance_list.index(min(distance_list))
         return nearest_corner
 
@@ -444,7 +455,7 @@ class GraspExecutor:
 
         rospy.sleep(1)
 
-        # pose, plan = 
+        # pose, plan =
         self.move_to_position(*self.lift_up_pose())
 
         rospy.sleep(1)
@@ -607,86 +618,48 @@ class GraspExecutor:
         self.turn_on_joint_traj_controller()
 
     def closed_loop_push_grasp(self, final_pose, force_threshold):
+        left_threshold = 50
+        right_threshold = 150
         run_flag = "n"
         current_force = 0
-
+        move_twist = self.plan_linear_twist(final_pose)
+        stop_twist = Twist()
         run_flag = raw_input("Ready? (y or n):")
+
         if run_flag == "y":
             self.turn_on_twist_controller()
+            self.twist_pub.publish(move_twist)
         else:
             pass
 
-        stop_twist = Twist()
-
         while current_force < force_threshold:
-            # Move towards corner
-            move_twist = self.plan_linear_twist(final_pose)
-            self.twist_pub.publish(move_twist)
+            # Get position of gripper
+            current_pose = self.move_group.get_current_pose()
+            current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
+            final_pose_coords = [final_pose.position.x, final_pose.position.y]
+            distance_to_corner = self.dist_two_points(current_pose_coords, final_pose_coords)
 
-            obj_in_front = True
+            # Location of orange
+            x_pos_of_obj = blob_detect()
+            rospy.loginfo("X pos of object: %f", x_pos_of_obj)
 
-            while obj_in_front:
-                # Get position of gripper
-                current_pose = self.move_group.get_current_pose()
-                current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
-                final_pose_coords = [final_pose.position.x, final_pose.position.y]
-                distance_to_corner = self.dist_two_points(current_pose_coords, final_pose_coords)
+            if x_pos_of_obj < left_threshold:
+                direction = "left"
+                target_angle, x_target_pos, y_target_pos = self.find_adj_target(direction, current_pose_coords, final_pose_coords, distance_to_corner)
+                self.adjust_gripper(target_angle, x_target_pos, y_target_pos)
+            elif x_pos_of_obj > right_threshold:
+                direction = "right"
+                target_angle, x_target_pos, y_target_pos = self.find_adj_target(direction, current_pose_coords, final_pose_coords, distance_to_corner)
+                self.adjust_gripper(target_angle, x_target_pos, y_target_pos)
 
-                # Distance to orange
-                self.tf_listener_.waitForTransform("/orange0", "/base_link", rospy.Time(), rospy.Duration(4))
-                (trans, rot) = self.tf_listener_.lookupTransform('/base_link','/orange0', rospy.Time(0))
-                obj_coords = [trans[0], trans[1]]
-                distance_to_obj = self.dist_two_points(current_pose_coords, obj_coords)
-                # rospy.loginfo("Distance to object: %f", distance_to_obj)
+            if distance_to_corner < 0.15:
+                # rospy.loginfo("Within range")
+                current_force = self.latest_force
+                rospy.loginfo("Force: %f", self.latest_force)
 
-                # Location of orange
-                self.tf_listener_.waitForTransform("/orange0", "/camera_link", rospy.Time(), rospy.Duration(4))
-                (trans, rot) = self.tf_listener_.lookupTransform('/camera_link', '/orange0', rospy.Time(0))
-                x_pos_of_obj = trans[0]
-                rospy.loginfo("X pos of object: %f", x_pos_of_obj)
-
-                # Check if too far to the right
-                if x_pos_of_obj > 0.025:
-                    rospy.loginfo("Object to the right")
-                    obj_in_front = False
-                    self.twist_pub.publish(stop_twist)
-                    # rotate until obj_in_front
-                    rot_twist = self.plan_rotation_twist("right")
-                    self.twist_pub.publish(rot_twist)
-                    while x_pos_of_obj > 0.025:
-                        # Location of orange
-                        self.tf_listener_.waitForTransform("/orange0", "/camera_link", rospy.Time(), rospy.Duration(4))
-                        (trans, rot) = self.tf_listener_.lookupTransform('/camera_link', '/orange0', rospy.Time(0))
-                        x_pos_of_obj = trans[0]
-                        rospy.loginfo("Rotating")
-                    self.twist_pub.publish(stop_twist)
-                # Check if too far to the left
-                elif x_pos_of_obj < -0.025:
-                    rospy.loginfo("Object to the left")
-                    obj_in_front = False
-                    self.twist_pub.publish(stop_twist)
-                    # rotate until obj_in_front
-                    rot_twist = self.plan_rotation_twist("left")
-                    self.twist_pub.publish(rot_twist)
-                    while x_pos_of_obj < -0.025:
-                        # Location of orange
-                        self.tf_listener_.waitForTransform("/orange0", "/camera_link", rospy.Time(), rospy.Duration(4))
-                        (trans, rot) = self.tf_listener_.lookupTransform('/camera_link', '/orange0', rospy.Time(0))
-                        x_pos_of_obj = trans[0]
-                        rospy.loginfo("Rotating")
-                    self.twist_pub.publish(stop_twist)
-
-                if distance_to_corner < 0.15:
-                    # rospy.loginfo("Within range")
-                    current_force = self.latest_force
-                    rospy.loginfo("Force: %f", self.latest_force)
-                    break
-
-                if distance_to_corner < 0.05:
-                    rospy.loginfo("Close to corner")
-                    break
-
-            # SOMETHIGS
+            if distance_to_corner < 0.05:
+                rospy.loginfo("Close to corner")
+                break
 
         rospy.sleep(.1)
         rospy.loginfo("Close gripper")
@@ -698,6 +671,74 @@ class GraspExecutor:
         # Turn traj controller back on
         self.turn_on_joint_traj_controller()
 
+    def find_adj_target(self, direction, current_pose_coords, final_pose_coords, distance_to_corner):
+        linear_increment = 0.02
+        angular_increment = 0.0872665  # 5 degrees
+        radius = distance_to_corner - linear_increment
+
+        # Difference in x and y
+        x_diff = -(final_pose_coords[0] - current_pose_coords[0])
+        y_diff = (final_pose_coords[1] - current_pose_coords[1])
+        # Angle of the gripper to the corner (in z-axis)
+        angle = math.atan2(y_diff, x_diff)
+        left_target_angle = angle - angular_increment
+        right_target_angle = angle + angular_increment
+
+        if direction == "left":
+            target_angle = left_target_angle
+        elif direction == "right":
+            target_angle = right_target_angle
+        else:
+            target_angle = angle
+
+        x_target_pos = final_pose_coords[0] + radius*math.cos(target_angle + 3.14159)
+        y_target_pos = final_pose_coords[0] + radius*math.sin(target_angle + 3.14159)
+
+        return target_angle, x_target_pos, y_target_pos
+
+    def adjust_gripper(self, target_angle, x_target_pos, y_target_pos):
+        pos_gain = 0.01
+        ang_gain = 0.01
+        in_position = False
+        move_twist = Twist()
+        stop_twist = Twist()
+
+        while not in_position:
+            # Get position of gripper
+            current_pose = self.move_group.get_current_pose()
+            current_pose_coords = np.array([current_pose.pose.position.x, current_pose.pose.position.y])
+            # Get angles
+            quaternion = [0, 0, 0, 0]
+            quaternion[1] = current_pose.pose.orientation.x
+            quaternion[2] = current_pose.pose.orientation.y
+            quaternion[3] = current_pose.pose.orientation.z
+            quaternion[0] = current_pose.pose.orientation.w
+            current_angles = tf.euler_from_quaternion([quaternion])
+            current_x_angle = current_angles[0]
+            # Targets
+            target_pose_coords = np.array([x_target_pos, y_target_pos])
+            # Find error
+            # Position
+            pos_difference = target_pose_coords - current_pose_coords
+            pos_output = pos_gain*pos_difference
+            # Angle
+            ang_difference = target_angle - current_x_angle
+            ang_output = ang_gain*ang_difference
+
+            if pos_output < 0.01 and ang_output < 0.01:
+                # Stop movement
+                self.twist_pub.publish(stop_twist)
+                rospy.sleep(.1)
+                in_position = True
+            else:
+                # Create Twist
+                move_twist.linear.x = pos_output[0]
+                move_twist.linear.y = pos_output[1]
+                move_twist.angular.z = ang_output
+                # Execute movement
+                self.twist_pub.publish(move_twist)
+                rospy.sleep(.1)
+
     def plan_linear_twist(self, final_pose):
         current_pose = self.move_group.get_current_pose()
         x_diff = -(final_pose.position.x - current_pose.pose.position.x)
@@ -706,7 +747,7 @@ class GraspExecutor:
         rospy.loginfo("X diff: %f", x_diff)
         rospy.loginfo("Y diff: %f", x_diff)
         rospy.sleep(5)
-        
+
         move_twist = Twist()
         # TODO: Normalise values
         move_twist.linear.x = x_diff / 10
@@ -860,12 +901,6 @@ class GraspExecutor:
             # Find best grasp from reading
             # final_grasp_pose, final_grasp_pose_offset, plan_to_offset, plan_to_final, corner_pose = self.find_best_grasp(self.agile_data)
             final_grasp_pose, final_grasp_pose_offset, plan_to_offset, plan_to_final, corner_pose, valid_grasp = self.find_best_grasp()
-
-            # m1 = self.makeMarker(final_grasp_pose, (1, 0, 0), 0)
-            # m2 = self.makeMarker(final_grasp_pose_offset, (0, 1, 0), 1)
-            # m_array = MarkerArray()
-            # m_array.markers = [m1, m2]
-            # self.vis_pub.publish(m_array)
 
             if valid_grasp:
                 self.run_motion(final_grasp_pose_offset, plan_to_offset, plan_to_final, corner_pose)
