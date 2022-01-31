@@ -3,50 +3,72 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 
-if __name__ == '__main__':
-    try:
+class BlobDetector:
+    def __init__(self, writeImages=True, showImages=True, cv2Image=False):
+
+        self.bridge = CvBridge()
+        self.state = Quadrant.INIT
+        self.closest_state = Quadrant.INIT
+        self.angle = None
+        self.angular_velocity = 0
+        self.calc_time = None
+        self.writeImages = writeImages
+        self.showImages = showImages
+        self.cv2Image = cv2Image
+
+    def find_center(self, im):
         # load the image
-        path = "/Users/lachlanchumbley/Documents/SRP/right.jpg"
-        raw_image = cv2.imread(path)
+        if not self.cv2Image:
+            im = self.bridge.imgmsg_to_cv2(im, desired_encoding="8UC3")
 
-        rgb_image = cv2.cvtColor(raw_image, cv2.COLOR_BGR2RGB)
-        # plt.imshow(rgb_image)
-        # plt.show()
+        result = im.copy()
+        image = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)
 
-        hsv_image = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2HSV)
-
-        # rgba(227,120,64,255)
         light_orange = (1, 190, 200)
         dark_orange = (18, 255, 255)
 
         # find the colors within the specified boundaries and apply the mask
-        mask = cv2.inRange(hsv_image, light_orange, dark_orange)
-        result = cv2.bitwise_and(rgb_image, rgb_image, mask=mask)
+        mask = cv2.inRange(image, light_orange, dark_orange)
+        result = cv2.bitwise_and(image, image, mask=mask)
 
-        binary_result = np.where(result > 0, 1, 0)
+        if self.showImages:
+            cv2.imshow("orig", im)
+            cv2.imshow("hsv", image)
+            cv2.imshow("mask", mask)
+            cv2.waitKey(1)
 
+        if self.writeImages:
+            cv2.imwrite("img_temp.jpeg", im)
+            cv2.imwrite("mask.jpeg", mask)
+            cv2.imwrite("result.jpeg", result)
 
-        # show the images
-        plt.subplot(1, 2, 1)
-        plt.imshow(mask, cmap="gray")
-        plt.subplot(1, 2, 2)
-        plt.imshow(result)
-        plt.show()
+        contours = None
+        if PYTHON3:
+            contours, _ = cv2.findContours(
+                mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+            )
+            # print(tmp, contours)
+            contours = sorted(
+                contours, key=lambda el: cv2.contourArea(el), reverse=True
+            )
 
-        # calculate moments of binary image
-        # M = cv2.moments(binary_result)
-        #
-        # # calculate x,y coordinate of center
-        # cX = int(M["m10"] / M["m00"])
-        # cY = int(M["m01"] / M["m00"])
-        #
-        # # put text and highlight the center
-        # cv2.circle(rgb_image, (cX, cY), 5, (255, 255, 255), -1)
-        # cv2.putText(rgb_image, "centroid", (cX - 25, cY - 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-        #
-        # # display the image
-        # cv2.imshow("Image", rgb_image)
-        # cv2.waitKey(0)
+        else:
+            _, contours, _ = cv2.findContours(
+                mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+            )
+            contours.sort(key=lambda el: cv2.contourArea(el), reverse=True)
 
+        canvas = result.copy()
+
+        M = cv2.moments(contours[0])
+        center1 = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+        cv2.circle(canvas, center1, 2, (0, 255, 0), -1)
+
+        cv2.waitKey(0)
+
+    
+if __name__ == "__main__":
+    try:
+        angle_class = BlobDetectorService()
     except KeyboardInterrupt:
         pass

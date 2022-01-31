@@ -2,6 +2,11 @@ import numpy as np
 import moveit_commander
 from moveit_msgs.msg import DisplayTrajectory
 import rospy
+import cv2
+
+import sys
+
+PYTHON3 = sys.version_info.major == 3
 
 
 def dist_to_guess(p_base, guess):
@@ -41,3 +46,46 @@ def check_valid_plan(disp_traj_pub, robot, plan):
         run_flag = raw_input("Valid Trajectory [y to run]? or display path again [d to display]:")
 
     return True if run_flag == "y" else False
+
+def find_center(im):
+    result = im.copy()
+    image = cv2.cvtColor(im, cv2.COLOR_RGB2HSV)
+    # image = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)
+
+    light_orange = np.array([0, 87, 146])
+    dark_orange = np.array([16, 255, 255])
+
+    # find the colors within the specified boundaries and apply the mask
+    mask = cv2.inRange(image, light_orange, dark_orange)
+    result = cv2.bitwise_and(image, image, mask=mask)
+
+    cv2.imshow("orig", im)
+    cv2.imshow("hsv", image)
+    cv2.imshow("mask", mask)
+    # cv2.waitKey(1)
+
+    contours = None
+    if PYTHON3:
+        contours, _ = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+        )
+        # print(tmp, contours)
+        contours = sorted(
+            contours, key=lambda el: cv2.contourArea(el), reverse=True
+        )
+
+    else:
+        _, contours, _ = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+        )
+        contours.sort(key=lambda el: cv2.contourArea(el), reverse=True)
+
+    canvas = result.copy()
+
+    M = cv2.moments(contours[0])
+    center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+    cv2.circle(canvas, center, 2, (0, 255, 0), -1)
+
+    # cv2.waitKey(0)
+
+    return center
