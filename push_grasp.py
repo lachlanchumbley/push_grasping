@@ -245,7 +245,7 @@ class GraspExecutor:
         # Z value
         z_value = 0.06
         # Grasp pose offset distance
-        offset_dist = 0.1  # 0.2
+        offset_dist = 0.2  # 0.2
         # Grasp pose list
         poses = []
 
@@ -448,12 +448,12 @@ class GraspExecutor:
 
         # self.push_grasp(corner_pose, force_threshold, plan_to_corner)
 
-        rospy.sleep(1)
+        rospy.sleep(0.1)
 
         # pose, plan =
         self.move_to_position(*self.lift_up_pose())
 
-        rospy.sleep(1)
+        rospy.sleep(0.1)
         if self.gripper_data.gOBJ == 3:
             rospy.loginfo("Robot has missed/dropped object!")
             self.move_to_joint_position(self.move_home_joints)
@@ -466,7 +466,7 @@ class GraspExecutor:
             # self.move_to_joint_position(self.move_home_joints)
             self.move_to_joint_position(self.view_home_joints)
 
-        rospy.sleep(2)
+        # rospy.sleep(2)
 
     def move_to_position(self, grasp_pose, plan=None):
         self.move_group.set_pose_target(grasp_pose)
@@ -645,27 +645,27 @@ class GraspExecutor:
             rospy.loginfo("X pos of object: %f", x_pos_of_obj)
 
             # While orange not in front of gripper
-            while x_pos_of_obj > right_threshold or x_pos_of_obj < left_threshold:
-                if x_pos_of_obj < left_threshold:
-                    direction = "left"
-                    target_angle, x_target_pos, y_target_pos = self.find_adj_target(direction, current_pose_coords, final_pose_coords, distance_to_corner)
-                    self.adjust_gripper(target_angle, x_target_pos, y_target_pos)
-                elif x_pos_of_obj > right_threshold:
-                    direction = "right"
-                    target_angle, x_target_pos, y_target_pos = self.find_adj_target(direction, current_pose_coords, final_pose_coords, distance_to_corner)
-                    self.adjust_gripper(target_angle, x_target_pos, y_target_pos)
-                # Create Twist msg
-                move_twist = self.plan_linear_twist(final_pose)
-                # Location of orange
-                center = find_center(self.cv_image)
-                x_pos_of_obj = center[0]
-                # Move again?
-                # cancel_flag = raw_input("Move again? (y or n)")
-                # if cancel_flag == "y":
-                #     break
+            # while x_pos_of_obj > right_threshold or x_pos_of_obj < left_threshold:
+
+            if x_pos_of_obj < left_threshold:
+                direction = "left"
+            elif x_pos_of_obj > right_threshold:
+                direction = "right"
+            else:
+                direction = "forward"
+
+            target_angle, x_target_pos, y_target_pos = self.find_adj_target(direction, current_pose_coords, final_pose_coords, distance_to_corner)
+            self.adjust_gripper(target_angle, x_target_pos, y_target_pos)
+            # rospy.sleep(3)
+
+            # Create Twist msg
+            # move_twist = self.plan_linear_twist(final_pose)
+            # Location of orange
+            center = find_center(self.cv_image)
+            x_pos_of_obj = center[0]
 
             # Publish velocity
-            self.twist_pub.publish(move_twist)
+            # self.twist_pub.publish(move_twist)
 
             if distance_to_corner < 0.15:
                 # rospy.loginfo("Within range")
@@ -681,13 +681,13 @@ class GraspExecutor:
         self.command_gripper(close_gripper_msg())
         # Stop movement
         self.twist_pub.publish(stop_twist)
-        rospy.sleep(.1)
+        # rospy.sleep(.1)
 
         # Turn traj controller back on
         self.turn_on_joint_traj_controller()
 
     def find_adj_target(self, direction, current_pose_coords, final_pose_coords, distance_to_corner):
-        linear_increment = 0.02
+        linear_increment = 0.03
         angular_increment = 0.25 #
         rospy.loginfo("distance_to_corner: %f", distance_to_corner)
         radius = distance_to_corner - linear_increment
@@ -700,11 +700,11 @@ class GraspExecutor:
         rospy.loginfo("Y-diff: %f", y_diff)
 
         # Angle of the gripper to the corner (in z-axis)
-        # angle = math.atan2(y_diff, x_diff)
         angle = math.atan2(x_diff, y_diff)
         left_target_angle = angle - angular_increment
         right_target_angle = angle + angular_increment
 
+        # Choose 
         if direction == "left":
             target_angle = left_target_angle
             rospy.loginfo("LEFT")
@@ -712,16 +712,11 @@ class GraspExecutor:
             target_angle = right_target_angle
             rospy.loginfo("RIGHT")
         else:
-            rospy.loginfo("NO ANGLE: " + direction)
+            rospy.loginfo("FORWARD")
             target_angle = angle
 
         x_target_pos = final_pose_coords[0] + radius*math.sin(target_angle)
         y_target_pos = final_pose_coords[1] - radius*math.cos(target_angle)
-
-        # rospy.loginfo("math.cos(target_angle + 3.14159): %f", math.cos(target_angle + 3.14159))
-        # rospy.loginfo("math.sin(target_angle + 3.14159): %f", math.sin(target_angle + 3.14159))
-        # rospy.loginfo("radius*math.cos(target_angle + 3.14159): %f", radius*math.cos(target_angle + 3.14159))
-        # rospy.loginfo("radius*math.sin(target_angle + 3.14159): %f", radius*math.sin(target_angle + 3.14159))
 
         rospy.loginfo("Current X: %f", current_pose_coords[0])
         rospy.loginfo("Current Y: %f", current_pose_coords[1])
@@ -735,9 +730,6 @@ class GraspExecutor:
         rospy.loginfo("Target X: %f", x_target_pos)
         rospy.loginfo("Target Y: %f", y_target_pos)
 
-        rospy.loginfo("Original Radius: %f", radius)
-        rospy.loginfo("New Radius: %f", self.dist_two_points([x_target_pos, y_target_pos], final_pose_coords))
-
         rospy.loginfo("Current Angle: %f", angle)
         rospy.loginfo("Target Angle: %f", target_angle)
 
@@ -745,7 +737,8 @@ class GraspExecutor:
 
     def adjust_gripper(self, delta_angle, x_target_pos, y_target_pos):
         pos_gain = 0.5
-        ang_gain = 0.5
+        ang_gain = 0.3
+        max_ang_vel = 0.2
         in_position = False
         move_twist = Twist()
         stop_twist = Twist()
@@ -763,10 +756,13 @@ class GraspExecutor:
             quaternion[3] = current_pose.pose.orientation.w
             current_angles = tf.transformations.euler_from_quaternion(quaternion)
             current_x_angle = current_angles[2]
+
             if target_angle is None:
                 target_angle = current_x_angle - delta_angle
+
             # Targets
             target_pose_coords = np.array([x_target_pos, y_target_pos])
+
             # Find error
             # Position
             pos_difference = target_pose_coords - current_pose_coords
@@ -776,15 +772,14 @@ class GraspExecutor:
             ang_output = ang_gain*ang_difference
             # pdb.set_trace()
 
-            # rospy.loginfo("pos_output: %f , %f", pos_output[0], pos_output[1])
-            # rospy.loginfo("ang_output: %f", ang_output)
+            rospy.loginfo("pos_output: %f , %f", pos_output[0], pos_output[1])
+            rospy.loginfo("ang_output: %f", ang_output)
 
             if abs(pos_output[0]) < 0.01 and abs(pos_output[1]) < 0.01 and abs(ang_output) < 0.01:
                 # Stop movement
                 self.twist_pub.publish(stop_twist)
-                # rospy.sleep(.1)
                 in_position = True
-                # return
+                return
             else:
                 # Create Twist
                 move_twist.linear.x = -pos_output[0]
@@ -793,18 +788,15 @@ class GraspExecutor:
                 # Execute movement
                 self.twist_pub.publish(move_twist)
                 # return
-                # rospy.sleep(.1)
+        return
 
     def plan_linear_twist(self, final_pose):
         current_pose = self.move_group.get_current_pose()
         x_diff = -(final_pose.position.x - current_pose.pose.position.x)
         y_diff = -(final_pose.position.y - current_pose.pose.position.y)
 
-        # rospy.loginfo("X diff: %f", x_diff)
-        # rospy.loginfo("Y diff: %f", y_diff)
-        rospy.sleep(0.5)
-
         move_twist = Twist()
+
         # TODO: Normalise values
         move_twist.linear.x = x_diff / 10
         move_twist.linear.y = y_diff / 10
