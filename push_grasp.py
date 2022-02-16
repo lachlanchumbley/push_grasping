@@ -118,7 +118,7 @@ class GraspExecutor:
         corner_2 = [-0.405, 0.225]
         corner_3 = [-0.405, -0.130]
         # corner_4 = [-0.830, -0.130]
-        corner_4 = [-0.885, 0.071]
+        corner_4 = [-0.900, 0.093]
         self.corner_pos_list = [corner_1, corner_2, corner_3, corner_4]
 
         # Keep sleep here to allow scene to load
@@ -166,6 +166,7 @@ class GraspExecutor:
         # RGB Image
         self.rgb_sub = rospy.Subscriber('/realsense/rgb', Image, self.rgb_callback)
         self.cv_image = []
+        self.image_number = 0
 
         # Depth Image
         self.rgb_sub = rospy.Subscriber('/realsense/depth', Image, self.depth_image_callback)
@@ -174,7 +175,7 @@ class GraspExecutor:
         self.bridge = CvBridge()
         self.cv2Image = cv2Image = False
 
-        collect_data_flag = raw_input("Collect data? (y or n)")
+        collect_data_flag = raw_input("Collect data? (y or n): ")
         if collect_data_flag == "y":
             rospy.loginfo("Collecting data")
             self.collect_data = True
@@ -183,11 +184,12 @@ class GraspExecutor:
         
         # Create bag
         if self.collect_data:
-            self.bag = rosbag.Bag('/media/acrv/3be2f958-409c-453a-a1b5-44eea4af5a7c/push_grasp_data_bags/data_'+str(int(math.floor(time.time())))+".bag", 'w')
+            self.bag = rosbag.Bag('/home/acrv/new_ws/src/push_grasp/push_grasp_data_bags/data_'+str(int(math.floor(time.time())))+".bag", 'w')
 
     def rgb_callback(self, image):
         self.rgb_image = image
         self.cv_image = self.bridge.imgmsg_to_cv2(image, desired_encoding='passthrough')
+        self.image_number += 1
 
     def depth_image_callback(self, image):
         self.depth_image = image
@@ -284,78 +286,83 @@ class GraspExecutor:
         offset_dist = 0.15  # 0.2
         # Grasp pose list
         poses = []
-        # Noise
-        mu, sigma = 0, 0.03 # mean and standard deviation
-        x_noise, y_noise = np.random.normal(mu, sigma, 2)
-
-        # Listen to tf
-        self.tf_listener_.waitForTransform("/orange0", "/base_link", rospy.Time(), rospy.Duration(4))
-        (trans, rot) = self.tf_listener_.lookupTransform('/base_link','/orange0', rospy.Time(0))
-        x_pos = trans[0] + x_noise
-        y_pos = trans[1] + y_noise
-
-        rospy.loginfo("Apple Found!")
-        rospy.loginfo("X: %f", x_pos)
-        rospy.loginfo("Y: %f", y_pos)
-
-        # # Create pose in camera frame
-        p_base = PoseStamped()
-        p_base.header.frame_id = "/base_link"
-
-        # Add position to pose
-        p_base.pose.position.x = x_pos
-        p_base.pose.position.y = y_pos
-        # Set z to set value
-        p_base.pose.position.z = z_value
-
-        # Find nearest corner
-        # nearest_corner = self.find_nearest_corner(p_base) TURN OFF ATM
-        nearest_corner = 3
-
-        # Convert positions to 2D
-        corner_pos = self.corner_pos_list[nearest_corner]  # [x,y]
-        grasp_pos = [p_base.pose.position.x, p_base.pose.position.y]  # [x,y]
-
-        # Find approach angle
-        x_angle, offset_pos = self.calculate_approach(grasp_pos, corner_pos, -offset_dist)
-
-        # Find angle of gripper to the ground from hard-coded value
-        y_angle = np.deg2rad(grasp_angle)
-
-        # Print results
-        # rospy.loginfo("Nearest corner: %d", nearest_corner)
-        # rospy.loginfo("Corner Position - X: %f Y:%f", corner_pos[0], corner_pos[1])
-        rospy.loginfo("Grasp Position - X: %f Y:%f Z:%f", grasp_pos[0], grasp_pos[1], p_base.pose.position.z)
-        # rospy.loginfo("Z-angle: %f", np.rad2deg(z_angle))
-
-        # Generate pose
-        p_base = self.generate_push_pose(p_base, y_angle, x_angle)
-
-        # Create offset pose
-        p_base_offset = copy.deepcopy(p_base)
-        p_base_offset.pose.position.x = offset_pos[0]
-        p_base_offset.pose.position.y = offset_pos[1]
-
-        # Add pose to pose list
-        poses.append(copy.deepcopy(p_base.pose))
-
-        # Create pose array and add valid grasps
-        posearray = PoseArray()
-        posearray.poses = poses
-        posearray.header.frame_id = "base_link"
-
-        # Publish grasp array
-        self.pose_publisher.publish(posearray)
 
         # Set values
         valid_grasp = False
         cancel_flag = "n"
 
         while not valid_grasp:
+
+            # Noise
+            mu, sigma = 0, 0.05 # mean and standard deviation
+            x_noise, y_noise = np.random.normal(mu, sigma, 2)
+
+            # Listen to tf
+            self.tf_listener_.waitForTransform("/orange0", "/base_link", rospy.Time(), rospy.Duration(4))
+            (trans, rot) = self.tf_listener_.lookupTransform('/base_link','/orange0', rospy.Time(0))
+            x_pos = trans[0] + x_noise
+            y_pos = trans[1] + y_noise
+
+            rospy.loginfo("Apple Found!")
+            rospy.loginfo("X: %f", x_pos)
+            rospy.loginfo("Y: %f", y_pos)
+
+            # # Create pose in camera frame
+            p_base = PoseStamped()
+            p_base.header.frame_id = "/base_link"
+
+            # Add position to pose
+            p_base.pose.position.x = x_pos
+            p_base.pose.position.y = y_pos
+            # Set z to set value
+            p_base.pose.position.z = z_value
+
+            # Find nearest corner
+            # nearest_corner = self.find_nearest_corner(p_base) TURN OFF ATM
+            nearest_corner = 3
+
+            # Convert positions to 2D
+            corner_pos = self.corner_pos_list[nearest_corner]  # [x,y]
+            grasp_pos = [p_base.pose.position.x, p_base.pose.position.y]  # [x,y]
+
+            # Find approach angle
+            x_angle, offset_pos = self.calculate_approach(grasp_pos, corner_pos, -offset_dist)
+
+            # Find angle of gripper to the ground from hard-coded value
+            y_angle = np.deg2rad(grasp_angle)
+
+            # Print results
+            # rospy.loginfo("Nearest corner: %d", nearest_corner)
+            # rospy.loginfo("Corner Position - X: %f Y:%f", corner_pos[0], corner_pos[1])
+            rospy.loginfo("Grasp Position - X: %f Y:%f Z:%f", grasp_pos[0], grasp_pos[1], p_base.pose.position.z)
+            # rospy.loginfo("Z-angle: %f", np.rad2deg(z_angle))
+
+            # Generate pose
+            p_base = self.generate_push_pose(p_base, y_angle, x_angle)
+
+            # Create offset pose
+            p_base_offset = copy.deepcopy(p_base)
+            p_base_offset.pose.position.x = offset_pos[0]
+            p_base_offset.pose.position.y = offset_pos[1]
+
+            # Add pose to pose list
+            poses.append(copy.deepcopy(p_base.pose))
+
+            # Create pose array and add valid grasps
+            posearray = PoseArray()
+            posearray.poses = poses
+            posearray.header.frame_id = "base_link"
+
+            # Publish grasp array
+            self.pose_publisher.publish(posearray)
+            # ***************************************************
+
+
+
+
             # Check path planning from home state to offset grasp pose
             self.move_group.set_start_state(self.view_home_robot_state)
             self.move_group.set_pose_target(p_base_offset)
-            # plan_to_offset = self.move_group.plan()
             (plan_to_offset, fraction) = self.move_group.compute_cartesian_path([p_base_offset.pose], 0.01, 0)
             if fraction != 1:
                 rospy.logwarn("lol rip not valid grasp")
@@ -397,10 +404,10 @@ class GraspExecutor:
             else:
                 rospy.loginfo("Invalid path to offset pose")
 
-            if not valid_grasp:
-                cancel_flag = raw_input("Cancel? (y or n)")
-                if cancel_flag == "y":
-                    break
+            # if not valid_grasp:
+            #     cancel_flag = raw_input("Cancel? (y or n)")
+            #     if cancel_flag == "y":
+            #         break
 
         if valid_grasp:
             # Create pose array and add valid grasps
@@ -466,7 +473,10 @@ class GraspExecutor:
         force_threshold = 42
 
         # Move to offset pose
-        self.move_to_position(final_grasp_pose_offset, plan_to_offset)
+        successful = self.move_to_position(final_grasp_pose_offset, plan_to_offset)
+        if not successful:
+            rospy.loginfo("Could not move to Offset Position")
+            return 
         
         # Remove walls
         self.scene.remove_world_object(self.back_wall_name)
@@ -502,7 +512,7 @@ class GraspExecutor:
 
         # Save final state action pair
         if self.collect_data:
-            self.data_saver(final_state[0], final_state[1], final_state[2], final_state[3], final_state[4], final_state[5], final_action, reward)
+            self.data_saver(final_state[0], final_state[1], final_state[2], final_state[3], final_state[4], final_state[5], final_state[6], final_state[7], final_action, reward)
             self.bag.close()
 
         # Create new bag
@@ -511,8 +521,11 @@ class GraspExecutor:
 
         return
 
-    def move_to_position(self, grasp_pose, plan=None):
-        run_flag = "d"
+    def move_to_position(self, grasp_pose, plan=None, first_move=False):
+        if first_move:
+            run_flag = "d"
+        else:
+            run_flag = "y"
         if not plan:
             (plan, fraction) = self.move_group.compute_cartesian_path([grasp_pose.pose], 0.01, 0)
             if fraction != 1:
@@ -530,15 +543,19 @@ class GraspExecutor:
 
         if run_flag == "y":
             self.move_group.execute(plan, wait=True)
+            successful = True
         else:
+            successful = False
             rospy.loginfo("Path cancelled")
 
         self.move_group.stop()
         self.move_group.clear_pose_targets()
 
+        return successful
+
     def user_check_path(self, grasp_pose, plan):
 
-        run_flag = "d"
+        run_flag = "y"
 
         while run_flag == "d":
             display_trajectory = moveit_msgs.msg.DisplayTrajectory()
@@ -562,7 +579,7 @@ class GraspExecutor:
         
         # Cartesian Path
         (plan, fraction) = self.move_group.compute_cartesian_path([final_pose], 0.01, 0)
-        run_flag = "d"
+        run_flag = "y"
         # Check path is fully planned
         if fraction != 1:
             rospy.logwarn("lol rip")
@@ -658,7 +675,7 @@ class GraspExecutor:
 
         # Turn traj controller back on
         self.turn_on_joint_traj_controller()
-
+    
     def closed_loop_push_grasp(self, final_pose, force_threshold):
         # Initialise values
         left_threshold = 270
@@ -669,18 +686,27 @@ class GraspExecutor:
         current_force = 0
         move_twist = Twist()
         stop_twist = Twist()
-        baseline_force = 0
+        baseline_force = 39
         baseline_force_set = False
         force_jump = 3
         avg_baseline = np.zeros(10)
         avg_counter = 0
+        epsilon = 0.8
+        hit_wall_flag = False
+        step = 0
+        avg_force = np.zeros(10)
 
-        mu, sigma = 3, 1 # mean and standard deviation
-        force_jump = np.random.normal(mu, sigma, 1)[0]
+
+        mu, sigma = 3, 0.5 # mean and standard deviation
+        force_jump = np.clip(np.random.normal(mu, sigma, 1)[0], 0, 4)
 
         self.turn_on_twist_controller()
+        prev_number = -1
         
         while action != "grasp":
+            if prev_number == self.image_number:
+                continue
+
             # Get position of gripper
             current_pose = self.move_group.get_current_pose()
             current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
@@ -689,22 +715,30 @@ class GraspExecutor:
 
             # Location of orange
             center = find_center(self.cv_image)
+            prev_number = self.image_number
             x_pos_of_obj = center[0]
             # rospy.loginfo("X pos of object: %f", x_pos_of_obj)
 
-            # To grasp or not
-            if distance_to_corner < 0.10:
-                # If baseline force not set, take average of current array
-                if not baseline_force_set:
-                    baseline_force = np.mean(avg_baseline[0:avg_counter])
-                # Find current force
-                current_force = self.y_force
-                rospy.loginfo("Force: %f", current_force)
-                # If current force greater than baseline force by force jump amount (or close to corner)
-                if current_force > (baseline_force + force_jump):
-                    action = "grasp"
-                    action_data = 3
+            # Generate random value between 0 and 1
+            prob = np.random.uniform()
+            if 0.1 <= prob:
+                action_data = np.random.randint(0,3)
+                rospy.loginfo("---------------- RANDOM ACTION: %f --------------------", action_data)
             else:
+                action_data = -1
+
+            # To grasp or not
+            # if distance_to_corner < 0.30:
+                # If baseline force not set, take average of current array
+                #TODO: check this
+                # if not baseline_force_set:
+                #     if avg_counter < 3:
+                #         baseline_force = 39
+                #     else:
+                #         baseline_force = np.mean(avg_baseline[0:avg_counter])
+                # Find current force
+
+            if step > 10:
                 if not baseline_force_set:
                     # Add force value to average array
                     rospy.loginfo("Force: %f", self.y_force)
@@ -715,11 +749,35 @@ class GraspExecutor:
                         # Take the baseline force as the average of the array
                         baseline_force = np.mean(avg_baseline)
                         rospy.loginfo("Baseline Force: %f", baseline_force)
-                        baseline_force_set = True 
+                        baseline_force_set = True
 
+                current_force = self.y_force
+
+                # TODO: Average Force
+                index = step % 10
+                avg_force[index] = current_force
+                avg_force = np.mean(avg_force)
+
+                rospy.loginfo("Force: %f", avg_force)
+                rospy.loginfo("baseline_force: %f", baseline_force)
+                rospy.loginfo("force_jump: %f", force_jump)
+
+                if distance_to_corner < 0.10:
+                    # If current force greater than baseline force by force jump amount (or close to corner)
+                    if avg_force > (baseline_force + force_jump):
+                        action = "grasp"
+                        action_data = 3
+                        rospy.loginfo("------------- GRASP -------------------")
+                else:
+                    # If current force greater than baseline force by force jump amount (or close to corner)
+                    if avg_force > (baseline_force + force_jump + 2):
+                        hit_wall_flag = True
+                        rospy.loginfo("------------- HIT WALL -------------------")
+
+            step = step + 1
 
             # Choose movement action
-            if action != "grasp":
+            if action_data == -1:
                 if x_pos_of_obj < left_threshold:
                     action = "left"
                     action_data = 1
@@ -729,19 +787,24 @@ class GraspExecutor:
                 else:
                     action = "forward"
                     action_data = 0
-                # Movement Reward
-                reward = -0.1
 
-                # Save state / action pair
-                if self.collect_data:
-                    self.data_saver(self.rgb_image, self.depth_image, x_pos_of_obj, self.x_force, self.y_force, self.z_force, action_data, reward)
+            # Movement Reward
+            reward = -0.1
 
-                # Move
-                target_angle, x_target_pos, y_target_pos = self.find_adj_target(action, current_pose_coords, final_pose_coords, distance_to_corner)
-                self.adjust_gripper(target_angle, x_target_pos, y_target_pos)           
+            target_angle, x_target_pos, y_target_pos, current_angle = self.find_adj_target(action, current_pose_coords, final_pose_coords, distance_to_corner)
+
+            # Save state / action pairprob
+            # do not save grasp -> that is saved at the end lol
+            if self.collect_data and action_data != 3:
+                self.data_saver(self.rgb_image, self.depth_image, x_pos_of_obj, self.x_force, self.y_force, self.z_force, distance_to_corner, current_angle, action_data, reward)
+                
+            if not hit_wall_flag:
+                self.adjust_gripper(target_angle, x_target_pos, y_target_pos)
+            else:
+                break           
 
         # Final state action pair
-        final_state = [self.rgb_image, self.depth_image, x_pos_of_obj, self.x_force, self.y_force, self.z_force]
+        final_state = [self.rgb_image, self.depth_image, x_pos_of_obj, self.x_force, self.y_force, self.z_force, distance_to_corner, current_angle]
         final_action = action_data
 
         # Stop and close gripper
@@ -755,7 +818,7 @@ class GraspExecutor:
 
         return final_state, final_action
 
-    def data_saver(self, rgb_image, depth_image, x_pos, x_force, y_force, z_force, action, reward):
+    def data_saver(self, rgb_image, depth_image, x_pos, x_force, y_force, z_force, distance_to_corner, current_angle, action, reward):
         time_now = rospy.Time.from_sec(time.time())
         header = Header()
         header.stamp = time_now
@@ -767,6 +830,8 @@ class GraspExecutor:
         self.bag.write('x_force', self.floatToMsg(x_force))
         self.bag.write('y_force', self.floatToMsg(y_force))
         self.bag.write('z_force', self.floatToMsg(z_force))
+        self.bag.write('distance_to_corner', self.floatToMsg(distance_to_corner))
+        self.bag.write('current_angle', self.floatToMsg(current_angle))
         self.bag.write('action', self.floatToMsg(action))
         self.bag.write('reward', self.floatToMsg(reward))
 
@@ -774,7 +839,18 @@ class GraspExecutor:
         rospy.loginfo("X - Force: %f", x_force)
         rospy.loginfo("Y - Force: %f", y_force)
         rospy.loginfo("Z - Force: %f", z_force)
-        rospy.loginfo("Action: %f", action)
+        rospy.loginfo("Distance to corner: %f", distance_to_corner)
+        rospy.loginfo("Current angle: %f", current_angle)
+
+        if action == 0:
+            rospy.loginfo("Action: FORWARD")
+        elif action == 1:
+            rospy.loginfo("Action: LEFT")
+        elif action == 2:
+            rospy.loginfo("Action: RIGHT")
+        else:
+            rospy.loginfo("Action: GRASP")
+
         rospy.loginfo("Reward: %f", reward)
 
     def floatToMsg(self, data):
@@ -802,19 +878,19 @@ class GraspExecutor:
         # Choose 
         if direction == "left":
             target_angle = left_target_angle
-            rospy.loginfo("LEFT")
+            # rospy.loginfo("LEFT")
         elif direction == "right":
             target_angle = right_target_angle
-            rospy.loginfo("RIGHT")
+            # rospy.loginfo("RIGHT")
         else:
-            rospy.loginfo("FORWARD")
+            # rospy.loginfo("FORWARD")
             target_angle = angle
 
         # Target position
         x_target_pos = final_pose_coords[0] + radius*math.sin(target_angle)
         y_target_pos = final_pose_coords[1] - radius*math.cos(target_angle)
 
-        return (angle - target_angle), x_target_pos, y_target_pos
+        return (angle - target_angle), x_target_pos, y_target_pos, angle
 
     def adjust_gripper(self, delta_angle, x_target_pos, y_target_pos):
         pos_gain = 0.5
@@ -909,7 +985,7 @@ class GraspExecutor:
         if not plan:
             plan = self.move_group.plan()
 
-        run_flag = "d"
+        run_flag = "y"
 
         while run_flag == "d":
             display_trajectory = moveit_msgs.msg.DisplayTrajectory()
@@ -1018,7 +1094,10 @@ class GraspExecutor:
         while not rospy.is_shutdown():
             # Go to move home position using joint
             # self.move_to_joint_position(self.view_home_joints)
-            self.move_to_position(self.view_home_pose)
+            successful = self.move_to_position(self.view_home_pose, first_move=True)
+            if not successful:
+                rospy.loginfo("Could not move to View Position")
+                continue
             rospy.loginfo("Moved to View Position")
             # Get angles
             current_pose = self.move_group.get_current_pose()
@@ -1053,7 +1132,7 @@ class GraspExecutor:
 
             rospy.loginfo("Task complete!")
             
-            cancel_flag = raw_input("Cancel? (y or n)")
+            # cancel_flag = raw_input("Cancel? (y or n)")
             if cancel_flag == "y":
                 break
 

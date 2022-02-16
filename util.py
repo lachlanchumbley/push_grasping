@@ -81,10 +81,20 @@ def find_center(im):
         contours.sort(key=lambda el: cv2.contourArea(el), reverse=True)
 
     canvas = result.copy()
-
-    M = cv2.moments(contours[0])
-    center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
-    cv2.circle(canvas, center, 2, (0, 255, 0), -1)
+    
+    if len(contours) > 0:
+        M = cv2.moments(contours[0])
+        if M["m00"] != 0:
+            center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+            cv2.circle(canvas, center, 2, (0, 255, 0), -1)
+        else:
+            # Return random
+            x_pos = np.random.randint(0,640)
+            center = [x_pos,240]
+    else:
+        # Return random
+        x_pos = np.random.randint(0,640)
+        center = [x_pos,240]
 
     # cv2.waitKey(0)
 
