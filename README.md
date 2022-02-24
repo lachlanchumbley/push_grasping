@@ -47,6 +47,20 @@ METHOD 2 (Manually boot each node):
 
 	<!-- 11. Run `rosrun push_grasp pcl_stitcher_service.py` to initialize point cloud detector -->
 
+	plug in arudino run `dmesg`
+	Look at most recent output should be sometihng like:
+	```
+	[ 6856.027452] usb 3-1: New USB device strings: Mfr=1, Product=2, SerialNumber=220
+	[ 6856.027454] usb 3-1: Manufacturer: Arduino (www.arduino.cc)
+	[ 6856.027455] usb 3-1: SerialNumber: 75935313836351201031
+	[ 6856.029177] cdc_acm 3-1:1.0: ttyACM0: USB ACM device
+	```
+	run `sudo chmod a+rw /dev/ttyACM*` to get permissions.  
+
+	Change /dev/ttyACM** in push_grasp.py 
+
+
+
 When ready to run grasp code:
 
 1. Run `rosrun push_grasp push_grasp.py` to run grasping node

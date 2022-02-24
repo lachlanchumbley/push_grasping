@@ -89,13 +89,16 @@ def find_center(im):
             cv2.circle(canvas, center, 2, (0, 255, 0), -1)
         else:
             # Return random
-            x_pos = np.random.randint(0,640)
+            x_pos = 320
+            # x_pos = np.random.randint(0,640)
             center = [x_pos,240]
     else:
         # Return random
-        x_pos = np.random.randint(0,640)
+        x_pos = 320
+        # x_pos = np.random.randint(0,640)
         center = [x_pos,240]
 
     # cv2.waitKey(0)
 
     return center
+

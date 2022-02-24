@@ -20,6 +20,7 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 import rosbag
 import time, timeit
+import serial
 
 
 
@@ -28,9 +29,9 @@ import moveit_msgs.msg
 from moveit_msgs.msg import DisplayTrajectory, MoveGroupActionFeedback, RobotState, RobotTrajectory, CollisionObject
 from sensor_msgs.msg import JointState
 from actionlib_msgs.msg import GoalStatusArray
-from robotiq_2f_gripper_control.msg import _Robotiq2FGripper_robot_output as outputMsg, \
-    _Robotiq2FGripper_robot_input as inputMsg
-from gripper import open_gripper_msg, close_gripper_msg, activate_gripper_msg, reset_gripper_msg
+# from robotiq_2f_gripper_control.msg import _Robotiq2FGripper_robot_output as outputMsg, \
+#     _Robotiq2FGripper_robot_input as inputMsg
+# from gripper import open_gripper_msg, close_gripper_msg, activate_gripper_msg, reset_gripper_msg
 from util import dist_to_guess, vector3ToNumpy, find_center
 
 from pyquaternion import Quaternion
@@ -75,15 +76,15 @@ class GraspExecutor:
 
         self.state = State.FIRST_GRAB
 
-        self.gripper_data = 0
+        # self.gripper_data = 0
 
         # Force Sensor
         self.force_sub = rospy.Subscriber('robotiq_ft_wrench', WrenchStamped, self.force_callback)
         # Gripper
-        self.gripper_sub = rospy.Subscriber('/Robotiq2FGripperRobotInput', inputMsg.Robotiq2FGripper_robot_input,
-                                            self.gripper_state_callback)
-        self.gripper_pub = rospy.Publisher('/Robotiq2FGripperRobotOutput', outputMsg.Robotiq2FGripper_robot_output,
-                                           queue_size=1)
+        # self.gripper_sub = rospy.Subscriber('/Robotiq2FGripperRobotInput', inputMsg.Robotiq2FGripper_robot_input,
+        #                                     self.gripper_state_callback)
+        # self.gripper_pub = rospy.Publisher('/Robotiq2FGripperRobotOutput', outputMsg.Robotiq2FGripper_robot_output,
+        #                                    queue_size=1)
         # ros::Publisher vis_pub = node_handle.advertise<visualization_msgs::Marker>( "visualization_marker", 0 )
         self.vis_pub = rospy.Publisher("vis", MarkerArray, queue_size=1)
         self.x_force = 0.0
@@ -144,7 +145,6 @@ class GraspExecutor:
         self.roof_name = "roof"
         self.add_roof()
 
-        # self.switch_controller_server()
 
         rospy.wait_for_service('/controller_manager/switch_controller')
 
@@ -185,6 +185,14 @@ class GraspExecutor:
         # Create bag
         if self.collect_data:
             self.bag = rosbag.Bag('/home/acrv/new_ws/src/push_grasp/push_grasp_data_bags/data_'+str(int(math.floor(time.time())))+".bag", 'w')
+
+        user_input = raw_input("Soft gripper? (y / n )")
+
+        if user_input == "y":
+            self.using_soft_gripper = True
+            self.Ser = serial.Serial('/dev/ttyACM0', 9600)
+        else:
+            self.using_soft_gripper = False
 
     def rgb_callback(self, image):
         self.rgb_image = image
@@ -261,7 +269,7 @@ class GraspExecutor:
         roof_pose.pose.orientation.w = 1.0
         roof_pose.pose.position.x = -0.75
         roof_pose.pose.position.y = -0.0
-        roof_pose.pose.position.z = 0.67
+        roof_pose.pose.position.z = 0.8
 
         self.scene.add_box(self.roof_name, roof_pose, size=(2.5, 1.4, 0.01))
 
@@ -300,8 +308,8 @@ class GraspExecutor:
             # Listen to tf
             self.tf_listener_.waitForTransform("/orange0", "/base_link", rospy.Time(), rospy.Duration(4))
             (trans, rot) = self.tf_listener_.lookupTransform('/base_link','/orange0', rospy.Time(0))
-            x_pos = trans[0] + x_noise
-            y_pos = trans[1] + y_noise
+            x_pos = trans[0] #+ x_noise
+            y_pos = trans[1] #+ y_noise
 
             rospy.loginfo("Apple Found!")
             rospy.loginfo("X: %f", x_pos)
@@ -357,11 +365,9 @@ class GraspExecutor:
             self.pose_publisher.publish(posearray)
             # ***************************************************
 
-
-
-
             # Check path planning from home state to offset grasp pose
-            self.move_group.set_start_state(self.view_home_robot_state)
+            self.move_group.set_start_state(self.robot.get_current_state())
+            # self.move_group.set_start_state(self.view_home_robot_state)
             self.move_group.set_pose_target(p_base_offset)
             (plan_to_offset, fraction) = self.move_group.compute_cartesian_path([p_base_offset.pose], 0.01, 0)
             if fraction != 1:
@@ -403,11 +409,6 @@ class GraspExecutor:
                     rospy.loginfo("Invalid path to offset pose")
             else:
                 rospy.loginfo("Invalid path to offset pose")
-
-            # if not valid_grasp:
-            #     cancel_flag = raw_input("Cancel? (y or n)")
-            #     if cancel_flag == "y":
-            #         break
 
         if valid_grasp:
             # Create pose array and add valid grasps
@@ -499,7 +500,9 @@ class GraspExecutor:
         rospy.sleep(1)
 
         # Check if grasp was successful
-        if self.gripper_data.gOBJ == 3:
+        # user_input = raw_input("Successful grasp? (y or n): ")
+        # if self.gripper_data.gOBJ == 3:
+        if user_input != "y":
             rospy.loginfo("Robot has missed/dropped object!")
             # Unsuccessful grasp reward
             reward = -10
@@ -508,7 +511,9 @@ class GraspExecutor:
             reward = 10
 
         # Open gripper
-        self.command_gripper(open_gripper_msg())
+        # user_input = raw_input("Open gripper (Press space to continue): ")
+        self.open_soft_gripper()
+        # self.command_gripper(open_gripper_msg())
 
         # Save final state action pair
         if self.collect_data:
@@ -525,7 +530,8 @@ class GraspExecutor:
         if first_move:
             run_flag = "d"
         else:
-            run_flag = "y"
+            run_flag = "d"
+
         if not plan:
             (plan, fraction) = self.move_group.compute_cartesian_path([grasp_pose.pose], 0.01, 0)
             if fraction != 1:
@@ -571,113 +577,11 @@ class GraspExecutor:
         elif run_flag == "n":
             self.move_group.clear_pose_targets()
             return False
-
-    def push_grasp(self, final_pose, force_threshold, plan_to_corner, plan=None):
-        # self.move_group.set_pose_target(final_pose)
-        # if not plan:
-        #     plan = self.move_group.plan()
-        
-        # Cartesian Path
-        (plan, fraction) = self.move_group.compute_cartesian_path([final_pose], 0.01, 0)
-        run_flag = "y"
-        # Check path is fully planned
-        if fraction != 1:
-            rospy.logwarn("lol rip")
-            return
-        # Display path
-        while run_flag == "d":
-            display_trajectory = moveit_msgs.msg.DisplayTrajectory()
-            display_trajectory.trajectory_start = self.robot.get_current_state()
-            display_trajectory.trajectory.append(plan)
-            self.display_trajectory_publisher.publish(display_trajectory)
-            run_flag = raw_input("Valid Trajectory [y to run]? or display path again [d to display]:")
-
-        if run_flag == "y":
-            self.move_group.execute(plan, wait=False)
-            # Check force feedback
-            rospy.sleep(0.5)
-            # baseline_force = 0
-            while self.y_force < force_threshold:
-                # Get position of gripper
-                current_pose = self.move_group.get_current_pose()
-                current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
-                final_pose_coords = [final_pose.position.x, final_pose.position.y]
-                distance_to_corner = self.dist_two_points(current_pose_coords, final_pose_coords)
-                # Distance to orange
-                self.tf_listener_.waitForTransform("/orange0", "/base_link", rospy.Time(), rospy.Duration(4))
-                (trans, rot) = self.tf_listener_.lookupTransform('/base_link','/orange0', rospy.Time(0))
-                obj_coords = [trans[0], trans[1]]
-                distance_to_obj = self.dist_two_points(current_pose_coords, obj_coords)
-                rospy.loginfo("Distance to object: %f", distance_to_obj)
-                rospy.loginfo("Force: %f", self.y_force)
-
-                if distance_to_obj < 0.01:
-                    rospy.loginfo("Contact with orange")
-                    baseline_force = self.y_force + 2
-
-                if distance_to_corner < 0.05:
-                    rospy.loginfo("Close to corner")
-                    break
-
-            rospy.sleep(.1)
-            rospy.loginfo("Close gripper")
-            self.command_gripper(close_gripper_msg())
-            rospy.sleep(.1)
-        else:
-            rospy.loginfo("Path cancelled")
-
-        self.move_group.stop()
-        self.move_group.clear_pose_targets()
-
-    def vel_push_grasp(self, final_pose, force_threshold):
-        # Initialise values
-        run_flag = "n"
-        current_force = 0
-        move_twist = self.plan_linear_twist(final_pose)
-        stop_twist = Twist()
-        run_flag = raw_input("Ready? (y or n):")
-
-        if run_flag == "y":
-            self.turn_on_twist_controller()
-            self.twist_pub.publish(move_twist)
-        else:
-            pass
-
-        while current_force < force_threshold:
-            # Get position of gripper
-            current_pose = self.move_group.get_current_pose()
-            current_pose_coords = [current_pose.pose.position.x, current_pose.pose.position.y]
-            final_pose_coords = [final_pose.position.x, final_pose.position.y]
-            distance_to_corner = self.dist_two_points(current_pose_coords, final_pose_coords)
-
-            # Distance to orange
-            self.tf_listener_.waitForTransform("/orange0", "/base_link", rospy.Time(), rospy.Duration(4))
-            (trans, rot) = self.tf_listener_.lookupTransform('/base_link','/orange0', rospy.Time(0))
-            obj_coords = [trans[0], trans[1]]
-            distance_to_obj = self.dist_two_points(current_pose_coords, obj_coords)
-            rospy.loginfo("Distance to object: %f", distance_to_obj)
-
-            if distance_to_corner < 0.15:
-                # rospy.loginfo("Within range")
-                current_force = self.y_force
-                rospy.loginfo("Force: %f", current_force)
-
-            if distance_to_corner < 0.05:
-                rospy.loginfo("Close to corner")
-                break
-
-        rospy.sleep(.1)
-        rospy.loginfo("Close gripper")
-        self.command_gripper(close_gripper_msg())
-        # Stop movement
-        self.twist_pub.publish(stop_twist)
-        rospy.sleep(.1)
-
-        # Turn traj controller back on
-        self.turn_on_joint_traj_controller()
     
     def closed_loop_push_grasp(self, final_pose, force_threshold):
         # Initialise values
+        # left_threshold = 270
+        # right_threshold = 370
         left_threshold = 270
         right_threshold = 370
         run_flag = "n"
@@ -686,19 +590,20 @@ class GraspExecutor:
         current_force = 0
         move_twist = Twist()
         stop_twist = Twist()
-        baseline_force = 39
+        baseline_force = 33
         baseline_force_set = False
-        force_jump = 3
+        force_jump = 5
         avg_baseline = np.zeros(10)
         avg_counter = 0
         epsilon = 0.8
         hit_wall_flag = False
         step = 0
-        avg_force = np.zeros(10)
+        avg_force_list = np.ones(1) * baseline_force
+        avg_force = 0
 
 
         mu, sigma = 3, 0.5 # mean and standard deviation
-        force_jump = np.clip(np.random.normal(mu, sigma, 1)[0], 0, 4)
+        # force_jump = np.clip(np.random.normal(mu, sigma, 1)[0], 0, 4)
 
         self.turn_on_twist_controller()
         prev_number = -1
@@ -721,7 +626,7 @@ class GraspExecutor:
 
             # Generate random value between 0 and 1
             prob = np.random.uniform()
-            if 0.1 <= prob:
+            if 1 <= prob:
                 action_data = np.random.randint(0,3)
                 rospy.loginfo("---------------- RANDOM ACTION: %f --------------------", action_data)
             else:
@@ -730,7 +635,6 @@ class GraspExecutor:
             # To grasp or not
             # if distance_to_corner < 0.30:
                 # If baseline force not set, take average of current array
-                #TODO: check this
                 # if not baseline_force_set:
                 #     if avg_counter < 3:
                 #         baseline_force = 39
@@ -753,24 +657,23 @@ class GraspExecutor:
 
                 current_force = self.y_force
 
-                # TODO: Average Force
-                index = step % 10
-                avg_force[index] = current_force
-                avg_force = np.mean(avg_force)
+                # index = step % 1
+                # avg_force_list[index] = current_force
+                # avg_force = np.mean(avg_force)
 
-                rospy.loginfo("Force: %f", avg_force)
+                rospy.loginfo("Force: %f", current_force)
                 rospy.loginfo("baseline_force: %f", baseline_force)
                 rospy.loginfo("force_jump: %f", force_jump)
 
-                if distance_to_corner < 0.10:
+                if distance_to_corner < 0.15:
                     # If current force greater than baseline force by force jump amount (or close to corner)
-                    if avg_force > (baseline_force + force_jump):
+                    if current_force > (baseline_force + force_jump):
                         action = "grasp"
                         action_data = 3
                         rospy.loginfo("------------- GRASP -------------------")
                 else:
                     # If current force greater than baseline force by force jump amount (or close to corner)
-                    if avg_force > (baseline_force + force_jump + 2):
+                    if current_force > (baseline_force + force_jump + 2):
                         hit_wall_flag = True
                         rospy.loginfo("------------- HIT WALL -------------------")
 
@@ -811,7 +714,9 @@ class GraspExecutor:
         self.twist_pub.publish(stop_twist)
         rospy.sleep(.1)
         rospy.loginfo("Close gripper")
-        self.command_gripper(close_gripper_msg())
+        # user_input = raw_input("Close gripper (Press space to continue): ")
+        self.close_soft_gripper()
+        # self.command_gripper(close_gripper_msg())
 
         # Turn traj controller back on
         self.turn_on_joint_traj_controller()
@@ -949,36 +854,12 @@ class GraspExecutor:
                 # return
         return
 
-    def plan_linear_twist(self, final_pose):
-        current_pose = self.move_group.get_current_pose()
-        x_diff = -(final_pose.position.x - current_pose.pose.position.x)
-        y_diff = -(final_pose.position.y - current_pose.pose.position.y)
-
-        move_twist = Twist()
-
-        # TODO: Normalise values
-        move_twist.linear.x = x_diff / 10
-        move_twist.linear.y = y_diff / 10
-
-        return move_twist
-
     def smallestSignedAngleBetween(self, x, y):
         PI = math.pi
         TAU = 2*PI
         a = (x - y) % TAU
         b = (y - x) % TAU
         return -a if a < b else b
-
-    def plan_rotation_twist(self, direction):
-        move_twist = Twist()
-        if direction == "left":
-            move_twist.angular.z = 0.05
-        elif direction == "right":
-            move_twist.angular.z = -0.05
-        else:
-            rospy.loginfo("Invalid direction")
-
-        return move_twist
 
     def move_to_joint_position(self, joint_array, plan=None):
         self.move_group.set_joint_value_target(joint_array)
@@ -1000,15 +881,6 @@ class GraspExecutor:
 
         self.move_group.stop()
         self.move_group.clear_pose_targets()
-
-    def get_drop_pose(self):
-        drop = PoseStamped()
-
-        drop.pose.position.x = -0.450
-        drop.pose.position.y = -0.400
-        drop.pose.position.z = 0.487
-
-        return drop
 
     def command_gripper(self, grip_msg):
         # publish gripper message to gripper
@@ -1049,40 +921,38 @@ class GraspExecutor:
         while pcl_process.is_alive():
             rospy.sleep(0.1)
 
-    def makeMarker(self, pose, color, id):
-        marker = Marker()
-        marker.header.frame_id = "base_link"
-        marker.header.stamp = rospy.Time().now()
-        marker.ns = "my_namespace"
-        marker.id = id
-        marker.type = Marker.SPHERE
-        marker.action = Marker.ADD
-        marker.pose = pose.pose
-        marker.scale.x = 0.1
-        marker.scale.y = 0.1
-        marker.scale.z = 0.1
-        marker.color.a = 1.0  # // Don't forget to set the alpha!
-        marker.color.r = color[0]
-        marker.color.g = color[1]
-        marker.color.b = color[2]
-        return marker
+    def open_soft_gripper(self):
+        self.Ser.write('0'.encode())
+        return
+    
+    def close_soft_gripper(self):
+        self.Ser.write('1'.encode())
+        return
 
     def main(self):
         # Set rate
         rate = rospy.Rate(1)
+        # rospy.loginfo("0")
+
+        if not self.using_soft_gripper:
+            while not self.gripper_data:
+                rospy.loginfo("Waiting for gripper to connect")
+                rospy.sleep(1)
+                    
+        #     rospy.sleep(1)
+        # while not self.gripper_data and not rospy.is_shutdown():
         # Gripper startup sequence
-        while not self.gripper_data and not rospy.is_shutdown():
-            rospy.loginfo("Waiting for gripper to connect")
-            rospy.sleep(1)
-        self.command_gripper(reset_gripper_msg())
-        rospy.sleep(.1)
-        self.command_gripper(activate_gripper_msg())
-        rospy.sleep(.1)
-        self.command_gripper(close_gripper_msg())
-        rospy.sleep(.1)
-        self.command_gripper(open_gripper_msg())
-        rospy.sleep(.1)
-        rospy.loginfo("Gripper active")
+        #     rospy.loginfo("Waiting for gripper to connect")
+        #     rospy.sleep(1)
+        # self.command_gripper(reset_gripper_msg())
+        # rospy.sleep(.1)
+        # self.command_gripper(activate_gripper_msg())
+        # rospy.sleep(.1)
+        # self.command_gripper(close_gripper_msg())
+        # rospy.sleep(.1)
+        # self.command_gripper(open_gripper_msg())
+        # rospy.sleep(.1)
+        # rospy.loginfo("Gripper active")
 
         # TODO: rosrun robotiq_2f_gripper_control Robotiq2FGripperRtuNode.py /dev/ttyUSB0
         # pcl_node = roslaunch.core.Node('push_grasp', 'pcl_preprocess_node.py')
@@ -1091,14 +961,21 @@ class GraspExecutor:
         # Initialise cancel flag
         cancel_flag = "n"
 
+        # rospy.loginfo("1")
+
         while not rospy.is_shutdown():
             # Go to move home position using joint
             # self.move_to_joint_position(self.view_home_joints)
+            # rospy.loginfo("2")
             successful = self.move_to_position(self.view_home_pose, first_move=True)
             if not successful:
                 rospy.loginfo("Could not move to View Position")
                 continue
             rospy.loginfo("Moved to View Position")
+
+            self.open_soft_gripper()
+
+
             # Get angles
             current_pose = self.move_group.get_current_pose()
             quaternion = [0, 0, 0, 0]
