@@ -196,9 +196,21 @@ def get_robot_state(joint_list):
 
 def lift_up_plan(move_group):
     # lift gripper up
-    lift_dist = 0.15
+    lift_dist = 0.20
     new_pose = move_group.get_current_pose()
     new_pose.pose.position.z += lift_dist
+
+    move_group.set_start_state_to_current_state()
+    move_group.set_pose_target(new_pose)
+    plan_to_lift = move_group.plan()
+
+    return new_pose, plan_to_lift
+
+def move_back_plan(move_group):
+    # lift gripper up
+    lift_dist = 0.05
+    new_pose = move_group.get_current_pose()
+    new_pose.pose.position.x += lift_dist
 
     move_group.set_start_state_to_current_state()
     move_group.set_pose_target(new_pose)

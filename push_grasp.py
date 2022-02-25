@@ -32,7 +32,7 @@ from robotiq_2f_gripper_control.msg import _Robotiq2FGripper_robot_output as out
 from gripper import open_gripper_msg, close_gripper_msg, activate_gripper_msg, reset_gripper_msg
 from util import dist_to_guess, vector3ToNumpy, find_center, dist_two_points, smallestSignedAngleBetween, \
     calculate_approach, generate_push_pose, find_nearest_corner, floatToMsg, command_gripper, get_robot_state, \
-    lift_up_plan, add_front_wall, add_right_wall, add_left_wall, add_back_wall, add_roof
+    lift_up_plan, move_back_plan, add_front_wall, add_right_wall, add_left_wall, add_back_wall, add_roof
 
 from pyquaternion import Quaternion
 
@@ -63,8 +63,6 @@ class GraspExecutor:
         self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
         # Publisher for grasp poses
         self.pose_publisher = rospy.Publisher("/pose_viz", PoseArray, queue_size=1)
-
-        self.state = State.FIRST_GRAB
 
         self.gripper_data = 0
 
@@ -177,10 +175,11 @@ class GraspExecutor:
             self.bag = rosbag.Bag('/home/acrv/new_ws/src/push_grasp/push_grasp_data_bags/data_' + str(
                 int(math.floor(time.time()))) + ".bag", 'w')
 
-        user_input = raw_input("Soft gripper? (y / n )")
+        user_input = raw_input("Soft gripper? (y / n): ")
 
         if user_input == "y":
             self.using_soft_gripper = True
+            # CHANGE ARDUINO PORT HERE
             self.Ser = serial.Serial('/dev/ttyACM0', 9600)
         else:
             self.using_soft_gripper = False
@@ -384,12 +383,15 @@ class GraspExecutor:
         else:
             self.vel_push_grasp(corner_pose, force_threshold)
 
+        # Move back
+        self.move_to_position(*move_back_plan(self.move_group))
+        
         # Lift up
         self.move_to_position(*lift_up_plan(self.move_group))
 
         # Go to move home position using joint
-        self.move_to_joint_position(self.move_home_joints)
-        rospy.sleep(1)
+        # self.move_to_joint_position(self.move_home_joints)
+        # rospy.sleep(1)
 
         # Check if grasp was successful
         if self.using_soft_gripper:
@@ -438,10 +440,14 @@ class GraspExecutor:
             run_flag = "d"
 
         if not plan:
-            (plan, fraction) = self.move_group.compute_cartesian_path([grasp_pose.pose], 0.01, 0)
-            if fraction != 1:
-                rospy.logwarn("lol rip: %f", fraction)
-                run_flag = "n"
+            if not first_move:
+                (plan, fraction) = self.move_group.compute_cartesian_path([grasp_pose.pose], 0.01, 0)
+                if fraction != 1:
+                    rospy.logwarn("lol rip: %f", fraction)
+                    run_flag = "n"
+            elif first_move:
+                plan = self.move_group.plan()
+
 
         while run_flag == "d":
             display_trajectory = moveit_msgs.msg.DisplayTrajectory()
@@ -494,16 +500,20 @@ class GraspExecutor:
         current_force = 0
         move_twist = Twist()
         stop_twist = Twist()
-        baseline_force = 33
+        
         baseline_force_set = False
-        force_jump = 5
-        avg_baseline = np.zeros(10)
+        
         avg_counter = 0
         epsilon = 0.8
         hit_wall_flag = False
         step = 0
-        avg_force_list = np.ones(1) * baseline_force
+        
         avg_force = 0
+
+        baseline_force = 5
+        force_jump = 2.5
+        avg_force_list = np.ones(3) * baseline_force
+        avg_baseline = np.zeros(10) * baseline_force
 
         mu, sigma = 3, 0.5  # mean and standard deviation
         # force_jump = np.clip(np.random.normal(mu, sigma, 1)[0], 0, 4)
@@ -527,13 +537,13 @@ class GraspExecutor:
             x_pos_of_obj = center[0]
             # rospy.loginfo("X pos of object: %f", x_pos_of_obj)
 
-            # Generate random value between 0 and 1
-            prob = np.random.uniform()
-            if 1 <= prob:
-                action_data = np.random.randint(0, 3)
-                rospy.loginfo("---------------- RANDOM ACTION: %f --------------------", action_data)
-            else:
-                action_data = -1
+            # Random Action
+            # prob = np.random.uniform()
+            # if 1 <= prob:
+            #     action_data = np.random.randint(0, 3)
+            #     rospy.loginfo("---------------- RANDOM ACTION: %f --------------------", action_data)
+            # else:
+            #     action_data = -1
 
             # To grasp or not
             # if distance_to_corner < 0.30:
@@ -546,10 +556,11 @@ class GraspExecutor:
             # Find current force
 
             if step > 10:
+                # Determine baseline force
                 if not baseline_force_set:
                     # Add force value to average array
-                    rospy.loginfo("Force: %f", self.y_force)
-                    avg_baseline[avg_counter] = self.y_force
+                    rospy.loginfo("Force: %f", self.z_force)
+                    avg_baseline[avg_counter] = self.z_force
                     avg_counter = avg_counter + 1
                     # If array is full
                     if avg_counter == len(avg_baseline):
@@ -558,27 +569,35 @@ class GraspExecutor:
                         rospy.loginfo("Baseline Force: %f", baseline_force)
                         baseline_force_set = True
 
-                current_force = self.y_force
+                # Grab current force
+                current_force = self.z_force
 
-                # index = step % 1
-                # avg_force_list[index] = current_force
-                # avg_force = np.mean(avg_force)
+                index = step % 3
+                rospy.loginfo("index: %f", index)
+                avg_force_list[index] = current_force
+                avg_force = np.mean(avg_force_list)
 
-                rospy.loginfo("Force: %f", current_force)
+                rospy.loginfo("Current Force: %f", current_force)
+                rospy.loginfo("Average Force: %f", avg_force)
                 rospy.loginfo("baseline_force: %f", baseline_force)
                 rospy.loginfo("force_jump: %f", force_jump)
 
+                force_delta = abs(avg_force - baseline_force)
+                # Handle high force
                 if distance_to_corner < 0.15:
                     # If current force greater than baseline force by force jump amount (or close to corner)
-                    if current_force > (baseline_force + force_jump):
+                    # if force_delta > force_jump:
+                    # TODO: x
+                    # if avg_force > (baseline_force + force_jump):
+                    if avg_force < force_jump:
                         action = "grasp"
                         action_data = 3
                         rospy.loginfo("------------- GRASP -------------------")
-                else:
+                # else:
                     # If current force greater than baseline force by force jump amount (or close to corner)
-                    if current_force > (baseline_force + force_jump + 2):
-                        hit_wall_flag = True
-                        rospy.loginfo("------------- HIT WALL -------------------")
+                    # if avg_force > (baseline_force + force_jump + 2):
+                    #     hit_wall_flag = True
+                    #     rospy.loginfo("------------- HIT WALL -------------------")
 
             step = step + 1
 
@@ -619,10 +638,11 @@ class GraspExecutor:
 
         # Stop and close gripper
         self.twist_pub.publish(stop_twist)
-        rospy.sleep(.1)
+        rospy.sleep(.5)
         rospy.loginfo("Close gripper")
         if self.using_soft_gripper:
             self.close_soft_gripper()
+            rospy.sleep(.5)
         else:
             command_gripper(self.gripper_pub, close_gripper_msg())
 
@@ -811,29 +831,38 @@ class GraspExecutor:
             command_gripper(self.gripper_pub, close_gripper_msg())
             rospy.sleep(.1)
             command_gripper(self.gripper_pub, open_gripper_msg())
-            rospy.sleep(.1)
+            rospy.sleep(.1)       
             rospy.loginfo("Gripper active")
 
         # Initialise cancel flag
         run_flag = "y"
+
+        first_move = True
 
         # Main loop
         while not rospy.is_shutdown():
             # Go to move home position using joint
             # self.move_to_joint_position(self.view_home_joints)
             # Go to view position using pose
-            successful = self.move_to_position(self.view_home_pose, first_move=True)
+
+            successful = self.move_to_position(self.view_home_pose)
+
+            if first_move:
+                first_move = False
+
             if not successful:
                 rospy.loginfo("Could not move to View Position")
                 continue
-            rospy.loginfo("Moved to View Position")
+            else:
+                rospy.loginfo("Moved to View Position")
 
             # Open gripper
             if self.using_soft_gripper:
                 self.open_soft_gripper()
             else:
                 command_gripper(self.gripper_pub, open_gripper_msg())
-                rospy.sleep(.1)
+            
+            rospy.sleep(.1)
 
             # Find best grasp from reading
             final_grasp_pose, final_grasp_pose_offset, plan_to_offset, plan_to_final, corner_pose, valid_grasp = self.find_best_grasp()
