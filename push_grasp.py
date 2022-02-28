@@ -379,6 +379,19 @@ class GraspExecutor:
         loop_flag = "y"
 
         if loop_flag == "y":
+            if self.using_soft_gripper:
+                elbow_joint = self.robot.get_joint('elbow_joint').value()
+                shoulder_lift_joint = self.robot.get_joint('shoulder_lift_joint').value()
+                shoulder_pan_joint = self.robot.get_joint('shoulder_pan_joint').value()
+                wrist_1_joint = self.robot.get_joint('wrist_1_joint').value()
+                wrist_2_joint = self.robot.get_joint('wrist_2_joint').value()
+                wrist_3_joint = 0.33
+
+                joint_array = [shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint]
+
+                self.move_to_joint_position(joint_array)
+                rospy.sleep(0.1)
+
             final_state, final_action = self.closed_loop_push_grasp(corner_pose, force_threshold)
         else:
             self.vel_push_grasp(corner_pose, force_threshold)
@@ -490,10 +503,13 @@ class GraspExecutor:
 
     def closed_loop_push_grasp(self, final_pose, force_threshold):
         # Initialise values
-        # left_threshold = 270
-        # right_threshold = 370
-        left_threshold = 270
-        right_threshold = 370
+        if self.using_soft_gripper:
+            left_threshold = 220
+            right_threshold = 320
+        else:
+            left_threshold = 270
+            right_threshold = 370
+
         run_flag = "n"
         action = "forward"
         action_data = 0
@@ -584,15 +600,14 @@ class GraspExecutor:
 
                 force_delta = abs(avg_force - baseline_force)
                 # Handle high force
-                if distance_to_corner < 0.15:
+                # if distance_to_corner < 0.15:
                     # If current force greater than baseline force by force jump amount (or close to corner)
                     # if force_delta > force_jump:
-                    # TODO: x
                     # if avg_force > (baseline_force + force_jump):
-                    if avg_force < force_jump:
-                        action = "grasp"
-                        action_data = 3
-                        rospy.loginfo("------------- GRASP -------------------")
+                    # if avg_force < force_jump:
+                    #     action = "grasp"
+                    #     action_data = 3
+                    #     rospy.loginfo("------------- GRASP -------------------")
                 # else:
                     # If current force greater than baseline force by force jump amount (or close to corner)
                     # if avg_force > (baseline_force + force_jump + 2):
@@ -628,10 +643,11 @@ class GraspExecutor:
 
             if not hit_wall_flag:
                 self.adjust_gripper(target_angle, x_target_pos, y_target_pos)
+                # rospy.loginfo("X-POS: %f", x_pos_of_obj)
             else:
                 break
 
-                # Final state action pair
+        # Final state action pair
         final_state = [self.rgb_image, self.depth_image, x_pos_of_obj, self.x_force, self.y_force, self.z_force,
                        distance_to_corner, current_angle]
         final_action = action_data
